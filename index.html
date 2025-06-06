@@ -444,7 +444,7 @@ function setResetListener() {
   var btn = document.getElementById("resetBtn");
   if (btn) {
     btn.onclick = function() {
-      groupScores = groupScores.map(() => [0,0]);
+      groupScores = groupScores.map(() => ["",""]);
       renderRunden();
       renderTable();
       setResetListener();
