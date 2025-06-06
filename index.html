@@ -704,19 +704,20 @@ renderTable();
 
 <button id="resetBtn" style="margin: 25px auto 10px auto;display:block;font-size:1.13em;background:#eee;color:#222;border-radius:9px;padding:0.7em 2em;border:1.2px solid #bbb;cursor:pointer;">Turnier zurücksetzen</button>
 <script>
-document.addEventListener("DOMContentLoaded", function() {
+setTimeout(function() {
   var btn = document.getElementById("resetBtn");
-  btn.addEventListener("click", function() {
-    if (window.groupScores) {
-      window.groupScores = window.groupScores.map(() => [0,0]);
-      if (window.renderRunden) window.renderRunden();
-      if (window.renderTable) window.renderTable();
-    } else {
-      alert("Fehler: Scores nicht gefunden.");
-    }
-  });
-});
+  if (btn) {
+    btn.onclick = function() {
+      if (typeof groupScores !== "undefined" && groupScores && groupScores.length) {
+        groupScores = groupScores.map(() => [0,0]);
+        if (typeof renderRunden === "function") renderRunden();
+        if (typeof renderTable === "function") renderTable();
+      } else {
+        alert("Fehler: Scores nicht gefunden.");
+      }
+    };
+  }
+}, 500);
 </script>
-</body>
 
-</html>
+</body>
