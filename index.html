@@ -184,49 +184,61 @@
       margin: 0 2px;
       user-select: none;
     }
-    #teams {
-      display: flex;
-      flex-direction: row;
-      gap: 1.1rem;
-      width: 100%;
-      max-width: 800px;
-      justify-content: center;
-      overflow-x: auto;
-      padding-bottom: 0.3rem;
-    }
-    .team-edit-badge {
-      display: flex;
-      align-items: center;
-      background: #ededed;
-      border-radius: 11px;
-      border: 1px solid #d4d4d4;
-      padding: 0.24em 0.8em 0.24em 1em;
-      min-width: 98px;
-      max-width: 140px;
-      font-size: 1.19em;
-      font-weight: 400;
-      gap: 0.3em;
-      margin-bottom: 0.1em;
-      cursor: pointer;
-      transition: background 0.13s;
-    }
-    .team-edit-badge input[type="text"] {
-      border: none;
-      background: transparent;
-      font-size: 1.19em;
-      font-weight: 500;
-      color: inherit;
-      width: 60px;
-      text-align: center;
-      outline: none;
-      padding: 0 0.2em;
-      border-radius: 6px;
-      letter-spacing: 0.03em;
-      font-family: var(--font);
-    }
-    .team-edit-badge input[type="text"]:focus {
-      background: #fff6;
-    }
+    
+#teams {
+  display: flex;
+  flex-direction: row;
+  gap: 1.1rem;
+  width: 100%;
+  max-width: 800px;
+  justify-content: center;
+  overflow-x: auto;
+  padding-bottom: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.team-edit-badge {
+  display: flex;
+  align-items: center;
+  background: #ededed;
+  border-radius: 11px;
+  border: 1px solid #d4d4d4;
+  padding: 0.24em 0.8em 0.24em 1em;
+  min-width: 80px;
+  font-size: 1.19em;
+  font-weight: 400;
+  gap: 0.3em;
+  margin-bottom: 0.1em;
+  cursor: pointer;
+  transition: background 0.13s;
+  flex: 0 1 auto;
+  white-space: normal;
+}
+
+.team-edit-badge input[type="text"] {
+  border: none;
+  background: transparent;
+  font-size: 1.19em;
+  font-weight: 500;
+  color: inherit;
+  width: auto;
+  flex: 1 1 auto;
+  overflow: visible;
+  text-overflow: unset;
+  text-align: center;
+  outline: none;
+  padding: 0 0.5em;
+  border-radius: 6px;
+  letter-spacing: 0.03em;
+  font-family: var(--font);
+}
+
+.team-edit-badge input[type="text"]:focus {
+  background: #fff6;
+}
+
+
+
     .colorpicker-icon {
       width: 19px;
       height: 19px;
