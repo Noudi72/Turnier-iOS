@@ -427,9 +427,7 @@
     </thead>
     <tbody></tbody>
   </table>
-
-<button id="resetBtn" style="margin: 25px auto 10px auto;display:block;font-size:1.13em;background:#eee;color:#222;border-radius:9px;padding:0.7em 2em;border:1.2px solid #bbb;cursor:pointer;">Turnier zurücksetzen</button>
-
+</div>
 <audio id="buzzer" preload="auto">
   <source src="https://cdn.pixabay.com/audio/2022/03/15/audio_115b9b4848.mp3" type="audio/mpeg">
 </audio>
@@ -702,20 +700,21 @@ function renderTable(){
 }
 renderRunden();
 renderTable();
+</script>
 
-function addResetListener() {
-  var btn = document.getElementById("resetBtn");
-  if (btn) {
-    btn.onclick = function() {
-      groupScores = groupScores.map(() => [0,0]);
-      renderRunden();
-      renderTable();
-      addResetListener();
-    };
+<button id="resetBtn" style="margin: 25px auto 10px auto;display:block;font-size:1.13em;background:#eee;color:#222;border-radius:9px;padding:0.7em 2em;border:1.2px solid #bbb;cursor:pointer;">Turnier zurücksetzen</button>
+<script>
+document.getElementById("resetBtn").onclick = function() {
+  // Alle Ergebnisse auf 0 setzen
+  if (window.groupScores) {
+    window.groupScores = window.groupScores.map(() => [0,0]);
+    if (window.renderRunden) window.renderRunden();
+    if (window.renderTable) window.renderTable();
+  } else {
+    alert("Fehler: Scores nicht gefunden.");
   }
-}
-addResetListener();
-
+};
 </script>
 </body>
+
 </html>
