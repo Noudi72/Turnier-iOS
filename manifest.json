@@ -1,15 +1,17 @@
 {
-  "name": "EHCB Turnier App",
-  "short_name": "Turnier",
-  "start_url": "index.html",
+  "name": "Turnier-App EHC Biel-Bienne",
+  "short_name": "Turnier EHCBB",
+  "description": "Turnier- und Ergebnis-App für EHC Biel-Bienne.",
+  "start_url": ".",
   "display": "standalone",
-  "background_color": "#001F4E",
-  "theme_color": "#003366",
+  "background_color": "#f4f6fb",
+  "theme_color": "#df4848",
   "icons": [
     {
-      "src": "icon.png",
+      "src": "appicon.png",
       "sizes": "512x512",
       "type": "image/png"
     }
-  ]
+  ],
+  "lang": "de"
 }
