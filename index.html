@@ -555,6 +555,21 @@
       padding: 0.3em 0.5em;
       box-sizing: border-box;
     }
+    body.view-iphone .team-edit-badge .colorpicker-icon {
+      display: none;
+    }
+    body.view-iphone .team-edit-badge input[type="color"] {
+      position: static;
+      transform: none;
+      opacity: 1;
+      width: 28px;
+      height: 28px;
+      margin-left: 4px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      padding: 0;
+    }
     body.view-iphone .game-badge,
     body.view-iphone .pairing-row {
       padding: 0.5rem 0.5rem;
@@ -1059,11 +1074,14 @@ function renderTeamsEditor() {
       tDiv.querySelector('input[type="color"]').click();
       e.stopPropagation();
     };
-    tDiv.querySelector('input[type="color"]').addEventListener('input', (e) => {
+    const colorInput = tDiv.querySelector('input[type="color"]');
+    const onColorChange = (e) => {
       colors[i] = e.target.value;
       renderTeamsEditor();
       renderAll(true);
-    });
+    };
+    colorInput.addEventListener('input', onColorChange);
+    colorInput.addEventListener('change', onColorChange);
   }
 }
 
