@@ -305,30 +305,26 @@
 
 
 
-    .colorpicker-icon {
-      width: 19px;
-      height: 19px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-left: 0.2em;
-      border-radius: 6px;
-      background: #fff;
-      border: 1px solid #ddd;
-      box-shadow: 0 1px 4px #0001;
+    .color-btn {
+      margin-left: 0.35em;
+      border: 1px solid #00000028;
+      border-radius: 8px;
+      background: #ffffffcc;
+      color: #1a2f53;
+      font-size: 0.74em;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      padding: 0.3em 0.55em;
       cursor: pointer;
-      position: relative;
+      line-height: 1;
+      white-space: nowrap;
     }
-    .colorpicker-icon svg { width: 13px; height: 13px; display: block; }
     .team-edit-badge input[type="color"] {
       position: absolute;
-      right: 2px;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 19px;
-      height: 19px;
+      width: 1px;
+      height: 1px;
       opacity: 0;
-      cursor: pointer;
+      pointer-events: none;
     }
     .field-label {
       font-weight: 400;
@@ -555,20 +551,10 @@
       padding: 0.3em 0.5em;
       box-sizing: border-box;
     }
-    body.view-iphone .team-edit-badge .colorpicker-icon {
-      display: none;
-    }
-    body.view-iphone .team-edit-badge input[type="color"] {
-      position: static;
-      transform: none;
-      opacity: 1;
-      width: 28px;
-      height: 28px;
-      margin-left: 4px;
-      border: none;
-      background: transparent;
-      cursor: pointer;
-      padding: 0;
+    body.view-iphone .team-edit-badge .color-btn {
+      font-size: 0.7em;
+      padding: 0.3em 0.42em;
+      margin-left: 0.2em;
     }
     body.view-iphone .game-badge,
     body.view-iphone .pairing-row {
@@ -1060,9 +1046,7 @@ function renderTeamsEditor() {
     tDiv.style.color = fg;
     tDiv.innerHTML = `
       <input type="text" id="team${i}" value="${teams[i]}" maxlength="12" autocomplete="off" style="color:${fg}">
-      <span class="colorpicker-icon" title="Farbe wählen">
-        <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="${color}" stroke="#bbb" stroke-width="2"/></svg>
-      </span>
+      <button type="button" class="color-btn" aria-label="Farbe für ${teams[i]} wählen">Farbe</button>
       <input type="color" id="color${i}" value="${color}" aria-label="Teamfarbe auswählen">
     `;
     teamsDiv.appendChild(tDiv);
@@ -1070,11 +1054,10 @@ function renderTeamsEditor() {
       teams[i] = e.target.value;
       renderAll(true);
     });
-    tDiv.querySelector('.colorpicker-icon').onclick = (e) => {
-      tDiv.querySelector('input[type="color"]').click();
-      e.stopPropagation();
-    };
     const colorInput = tDiv.querySelector('input[type="color"]');
+    tDiv.querySelector('.color-btn').addEventListener('click', () => {
+      colorInput.click();
+    });
     const onColorChange = (e) => {
       colors[i] = e.target.value;
       renderTeamsEditor();
