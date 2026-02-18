@@ -6,6 +6,10 @@
 <link rel="apple-touch-icon" sizes="192x192" href="icon.png">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon-180.png">
 <link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon.png">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="shortcut icon" href="favicon.ico">
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -573,6 +577,18 @@
       border-width: 2px;
       box-shadow: 0 0 0 2px #ffffff88;
     }
+    body.view-iphone .team-edit-badge input[type="color"] {
+      position: static;
+      width: 30px;
+      height: 30px;
+      opacity: 1;
+      pointer-events: auto;
+      margin-left: 2px;
+      border: none;
+      background: transparent;
+      padding: 0;
+      cursor: pointer;
+    }
     body.view-iphone .game-badge,
     body.view-iphone .pairing-row {
       padding: 0.5rem 0.5rem;
@@ -1064,12 +1080,12 @@ function renderTeamsEditor() {
     const btnFg = getContrastYIQ(color);
     tDiv.innerHTML = `
       <input type="text" id="team${i}" value="${teams[i]}" maxlength="12" autocomplete="off" style="color:${fg}">
-      <button
-        type="button"
+      <label
+        for="color${i}"
         class="color-btn"
         aria-label="Farbe für ${teams[i]} wählen"
         style="border-color:${color};background:${color}22;color:${btnFg};box-shadow:0 0 0 1px ${color}55 inset;"
-      >Farbe</button>
+      >Farbe</label>
       <input type="color" id="color${i}" value="${color}" aria-label="Teamfarbe auswählen">
     `;
     teamsDiv.appendChild(tDiv);
@@ -1078,9 +1094,6 @@ function renderTeamsEditor() {
       renderAll(true);
     });
     const colorInput = tDiv.querySelector('input[type="color"]');
-    tDiv.querySelector('.color-btn').addEventListener('click', () => {
-      colorInput.click();
-    });
     const onColorChange = (e) => {
       colors[i] = e.target.value;
       renderTeamsEditor();
