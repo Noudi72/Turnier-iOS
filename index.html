@@ -297,6 +297,7 @@
   border-radius: 6px;
   letter-spacing: 0.03em;
   font-family: var(--font);
+  min-width: 0;
 }
 
 .team-edit-badge input[type="text"]:focus {
@@ -306,6 +307,10 @@
 
 
     .color-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
       margin-left: 0.35em;
       border: 1px solid #00000028;
       border-radius: 8px;
@@ -318,6 +323,10 @@
       cursor: pointer;
       line-height: 1;
       white-space: nowrap;
+      transition: transform 0.12s ease, box-shadow 0.16s ease;
+    }
+    .color-btn:active {
+      transform: scale(0.97);
     }
     .team-edit-badge input[type="color"] {
       position: absolute;
@@ -550,11 +559,19 @@
       font-size: 1em;
       padding: 0.3em 0.5em;
       box-sizing: border-box;
+      gap: 0.2rem;
+    }
+    body.view-iphone .team-edit-badge input[type="text"] {
+      font-size: 0.96em;
+      padding: 0 0.25em;
     }
     body.view-iphone .team-edit-badge .color-btn {
       font-size: 0.7em;
       padding: 0.3em 0.42em;
       margin-left: 0.2em;
+      font-weight: 800;
+      border-width: 2px;
+      box-shadow: 0 0 0 2px #ffffff88;
     }
     body.view-iphone .game-badge,
     body.view-iphone .pairing-row {
@@ -1044,9 +1061,15 @@ function renderTeamsEditor() {
     tDiv.className = 'team-edit-badge';
     tDiv.style.background = color;
     tDiv.style.color = fg;
+    const btnFg = getContrastYIQ(color);
     tDiv.innerHTML = `
       <input type="text" id="team${i}" value="${teams[i]}" maxlength="12" autocomplete="off" style="color:${fg}">
-      <button type="button" class="color-btn" aria-label="Farbe für ${teams[i]} wählen">Farbe</button>
+      <button
+        type="button"
+        class="color-btn"
+        aria-label="Farbe für ${teams[i]} wählen"
+        style="border-color:${color};background:${color}22;color:${btnFg};box-shadow:0 0 0 1px ${color}55 inset;"
+      >Farbe</button>
       <input type="color" id="color${i}" value="${color}" aria-label="Teamfarbe auswählen">
     `;
     teamsDiv.appendChild(tDiv);
