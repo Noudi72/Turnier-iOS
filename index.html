@@ -28,7 +28,7 @@
       --bg: #ecf2fb;
       --card: #fff;
       --border: #d8e1ee;
-      --radius: 18px;
+      --radius: 22px;
       --shadow: 0 10px 24px rgba(13, 47, 104, 0.1);
       --ice: #e9f2ff;
       --line: #c0d9ff;
@@ -49,9 +49,9 @@
       align-items: center;
       padding: 2.2rem 0 2rem 0;
       background:
-        radial-gradient(circle at 6% 5%, #ffffff 0, #ffffff00 30%),
-        radial-gradient(circle at 94% 92%, #dfe8fa 0, #dfe8fa00 35%),
-        linear-gradient(140deg, #f7faff 0%, #eef4ff 60%, #ecf2fd 100%),
+        radial-gradient(circle at 8% 6%, #ffffff 0, #ffffff00 33%),
+        radial-gradient(circle at 92% 88%, #dce8fa 0, #dce8fa00 38%),
+        linear-gradient(140deg, #f8fbff 0%, #edf4ff 55%, #eaf1fd 100%),
         var(--bg);
     }
     .logo {
@@ -91,6 +91,8 @@
       border: 1.1px solid var(--border);
       position: relative;
       overflow: hidden;
+      -webkit-backdrop-filter: blur(4px);
+      backdrop-filter: blur(4px);
     }
     .card::after {
       content: "";
@@ -414,6 +416,11 @@
       top: 10px;
       z-index: 20;
       border: 1px solid #ffd6b1;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+    }
+    .timer-section.is-running {
+      border-color: #ffbf86;
+      box-shadow: 0 14px 30px rgba(171, 85, 13, 0.2);
     }
     .timer-section label {
       display: flex;
@@ -449,8 +456,9 @@
       cursor: pointer;
       box-shadow: 0 2px 8px rgba(200,0,0,0.07);
       outline: none;
-      transition: filter 0.1s;
+      transition: filter 0.1s, transform 0.12s ease;
     }
+    .timer-section button:hover { transform: translateY(-1px); }
     .timer-section button:active { filter: brightness(0.96);}
     .timer-countdown {
       color: var(--primary);
@@ -471,6 +479,17 @@
       font-size: 0.84em;
       letter-spacing: 0.01em;
       min-width: 140px;
+      text-align: center;
+    }
+    .timer-state {
+      background: #ffffffde;
+      border: 1px solid #ffcca1;
+      color: #7a3d13;
+      border-radius: 999px;
+      padding: 0.35em 0.85em;
+      font-weight: 600;
+      font-size: 0.84em;
+      min-width: 120px;
       text-align: center;
     }
     body.view-broadcast {
@@ -651,6 +670,11 @@
       font-size: 0.76em;
       padding: 0.26em 0.58em;
     }
+    body.view-iphone .timer-state {
+      min-width: 96px;
+      font-size: 0.75em;
+      padding: 0.24em 0.55em;
+    }
     @media (max-width: 800px) {
       .card, .runde-block, .tabelle-card { max-width: 99vw; }
     }
@@ -707,6 +731,7 @@
   </label>
   <button id="startBtn">Start</button>
   <span class="timer-countdown" id="countdown">05:00</span>
+  <span class="timer-state" id="timer-state">Bereit</span>
   <span class="progress-chip" id="match-progress">Erfasst: 0/0</span>
 </div>
 <div id="runde-list"></div>
@@ -1139,28 +1164,52 @@ document.getElementById('resetBtn').addEventListener('click', () => {
 });
 
 let timer = null;
+let preStartTimer = null;
 let remaining = 300;
-let beepPlayed = {};
+let configuredDuration = 300;
+let timerPhase = 'idle';
 function pad(num) { return num < 10 ? `0${num}` : String(num); }
+function setInputsDisabled(disabled) {
+  document.getElementById('min').disabled = disabled;
+  document.getElementById('sec').disabled = disabled;
+}
+function setTimerState(text) {
+  const state = document.getElementById('timer-state');
+  if (state) state.textContent = text;
+}
+function updateTimerUI() {
+  const section = document.querySelector('.timer-section');
+  const startBtn = document.getElementById('startBtn');
+  const running = timerPhase === 'prestart' || timerPhase === 'running';
+  if (section) section.classList.toggle('is-running', running);
+  if (startBtn) startBtn.textContent = running ? 'Stop' : 'Start';
+}
+function getConfiguredDuration() {
+  const min = Math.max(0, Math.min(59, Number(document.getElementById('min').value) || 0));
+  const sec = Math.max(0, Math.min(59, Number(document.getElementById('sec').value) || 0));
+  document.getElementById('min').value = min;
+  document.getElementById('sec').value = sec;
+  return (min * 60) + sec;
+}
 function setCountdownDisplay(secs) {
   const m = Math.floor(secs / 60);
   const s = secs % 60;
   document.getElementById('countdown').textContent = `${pad(m)}:${pad(s)}`;
 }
-function playShortBeep() {
+function playShortBeep(frequency = 1000, duration = 0.14, volume = 0.22) {
   try {
     if (window.AudioContext) {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
-      osc.frequency.value = 1000;
+      osc.frequency.value = frequency;
       osc.connect(gain);
       gain.connect(ctx.destination);
-      gain.gain.setValueAtTime(0.22, ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.14);
+      gain.gain.setValueAtTime(volume, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + duration);
       osc.start();
-      osc.stop(ctx.currentTime + 0.14);
+      osc.stop(ctx.currentTime + duration);
       osc.onended = () => ctx.close();
     }
   } catch (e) {}
@@ -1181,31 +1230,100 @@ function playHorn() {
   horn.currentTime = 0;
   horn.play();
 }
-function startTimer() {
-  const min = Number(document.getElementById('min').value);
-  const sec = Number(document.getElementById('sec').value);
-  remaining = Math.max(0, (min * 60) + sec);
-  setCountdownDisplay(remaining);
+function stopTimer(resetToConfigured = true) {
   if (timer) clearInterval(timer);
-  beepPlayed = {};
+  if (preStartTimer) clearInterval(preStartTimer);
+  timer = null;
+  preStartTimer = null;
+  timerPhase = 'idle';
+  setInputsDisabled(false);
+  updateTimerUI();
+  setTimerState('Gestoppt');
+  if (resetToConfigured) {
+    configuredDuration = getConfiguredDuration();
+    remaining = configuredDuration;
+    setCountdownDisplay(remaining);
+  }
+}
+function finishTimer() {
+  if (timer) clearInterval(timer);
+  timer = null;
+  remaining = 0;
+  setCountdownDisplay(0);
+  timerPhase = 'idle';
+  setInputsDisabled(false);
+  updateTimerUI();
+  setTimerState('Zeit abgelaufen');
+  playBuzzer().then(() => setTimeout(playHorn, 180));
+}
+function startMainCountdown() {
+  timerPhase = 'running';
+  updateTimerUI();
+  setTimerState('Läuft');
+  remaining = configuredDuration;
+  setCountdownDisplay(remaining);
   timer = setInterval(() => {
-    if (remaining > 0) {
-      remaining -= 1;
-      setCountdownDisplay(remaining);
-      if (remaining <= 5 && remaining > 0 && !beepPlayed[remaining]) {
-        playShortBeep();
-        beepPlayed[remaining] = true;
-      }
+    if (remaining <= 0) {
+      finishTimer();
       return;
     }
+    remaining -= 1;
+    setCountdownDisplay(remaining);
+    if (remaining > 0 && remaining <= 3) {
+      setTimerState(`Ende in ${remaining}`);
+      playShortBeep(1200, 0.12, 0.24);
+    } else {
+      setTimerState('Läuft');
+    }
+    if (remaining === 0) finishTimer();
+  }, 1000);
+}
+function startTimer() {
+  if (timerPhase === 'running' || timerPhase === 'prestart') {
+    stopTimer(true);
+    return;
+  }
+  configuredDuration = getConfiguredDuration();
+  if (configuredDuration <= 0) {
+    setTimerState('Zeit einstellen');
     setCountdownDisplay(0);
-    playBuzzer().then(() => setTimeout(playHorn, 200));
-    clearInterval(timer);
+    return;
+  }
+  setInputsDisabled(true);
+  timerPhase = 'prestart';
+  updateTimerUI();
+  let preStartRemaining = 3;
+  setTimerState(`Start in ${preStartRemaining}`);
+  setCountdownDisplay(preStartRemaining);
+  playShortBeep(980, 0.13, 0.22);
+  preStartTimer = setInterval(() => {
+    preStartRemaining -= 1;
+    if (preStartRemaining > 0) {
+      setTimerState(`Start in ${preStartRemaining}`);
+      setCountdownDisplay(preStartRemaining);
+      playShortBeep(980, 0.13, 0.22);
+      return;
+    }
+    clearInterval(preStartTimer);
+    preStartTimer = null;
+    startMainCountdown();
   }, 1000);
 }
 
 document.getElementById('startBtn').onclick = startTimer;
-setCountdownDisplay(300);
+document.getElementById('min').addEventListener('input', () => {
+  if (timerPhase !== 'idle') return;
+  configuredDuration = getConfiguredDuration();
+  setCountdownDisplay(configuredDuration);
+});
+document.getElementById('sec').addEventListener('input', () => {
+  if (timerPhase !== 'idle') return;
+  configuredDuration = getConfiguredDuration();
+  setCountdownDisplay(configuredDuration);
+});
+setCountdownDisplay(configuredDuration);
+setTimerState('Bereit');
+updateTimerUI();
 loadViewMode();
 renderTeamsEditor();
 renderAll(false);
