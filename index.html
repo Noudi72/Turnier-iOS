@@ -792,6 +792,7 @@
   <div class="timer-actions">
     <button id="startBtn">Start</button>
     <button id="pauseBtn" class="secondary" disabled>Pause</button>
+    <button id="nextMatchBtn" class="secondary">Nächstes Spiel</button>
   </div>
   <span class="timer-countdown" id="countdown">05:00</span>
   <span class="timer-state" id="timer-state">Bereit</span>
@@ -1280,6 +1281,7 @@ function updateTimerUI() {
   const section = document.querySelector('.timer-section');
   const startBtn = document.getElementById('startBtn');
   const pauseBtn = document.getElementById('pauseBtn');
+  const nextMatchBtn = document.getElementById('nextMatchBtn');
   const active = timerPhase === 'prestart' || timerPhase === 'running' || timerPhase === 'paused';
   const running = timerPhase === 'prestart' || timerPhase === 'running';
   if (section) section.classList.toggle('is-running', active);
@@ -1288,6 +1290,7 @@ function updateTimerUI() {
     pauseBtn.disabled = !(timerPhase === 'running' || timerPhase === 'paused');
     pauseBtn.textContent = timerPhase === 'paused' ? 'Weiter' : 'Pause';
   }
+  if (nextMatchBtn) nextMatchBtn.disabled = !resolvedMatches.length;
 }
 function getConfiguredDuration() {
   const min = Math.max(0, Math.min(59, Number(document.getElementById('min').value) || 0));
@@ -1541,6 +1544,9 @@ function startTimer() {
 
 document.getElementById('startBtn').onclick = startTimer;
 document.getElementById('pauseBtn').onclick = togglePauseTimer;
+document.getElementById('nextMatchBtn').onclick = () => {
+  advanceToNextMatch(true);
+};
 document.getElementById('min').addEventListener('input', () => {
   if (timerPhase !== 'idle') return;
   configuredDuration = getConfiguredDuration();
