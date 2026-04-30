@@ -247,6 +247,11 @@
       border-color: #f0b13c;
       background: #fff9ee;
     }
+    .game-badge.is-current {
+      border-color: #ff9f57;
+      box-shadow: 0 0 0 2px #ffb2784f;
+      background: linear-gradient(180deg, #fffaf4 0%, #fff5ea 100%);
+    }
     .score-input:focus { border: 1px solid var(--secondary); background: #f4faff; }
     .score-box span.sep {
       font-size: 1.11em;
@@ -447,6 +452,11 @@
       padding: 4px 10px;
       font-weight: 600;
       color: #7a3d13;
+    }
+    .timer-options .toggle.auto-next {
+      border-color: #b8c9ea;
+      color: #27477f;
+      background: #f3f8ff;
     }
     .timer-options .mini {
       display: inline-flex;
@@ -791,6 +801,10 @@
       <input id="intervalToggle" type="checkbox">
       Intervallmodus
     </label>
+    <label class="toggle auto-next">
+      <input id="autoNextToggle" type="checkbox" checked>
+      Auto nächstes Spiel
+    </label>
     <label class="mini">Spiel
       <input id="workSec" type="number" min="1" max="599" value="45">s
     </label>
@@ -1091,6 +1105,7 @@ function renderMatchEditor() {
 function renderRunden() {
   const rundeList = document.getElementById('runde-list');
   rundeList.innerHTML = '';
+  ensureCurrentMatchIdx();
   const rounds = [...new Set(resolvedMatches.map((m) => m.round))].sort((a, b) => a - b);
   rounds.forEach((roundNumber) => {
     const roundMatches = resolvedMatches.filter((m) => m.round === roundNumber);
@@ -1105,7 +1120,9 @@ function renderRunden() {
       const pending = !isCompleteScore(score);
       const scoreDisabled = match.a == null || match.b == null ? 'disabled' : '';
       const gDiv = document.createElement('div');
-      gDiv.className = pending ? 'game-badge game-pending' : 'game-badge';
+      const selectedClass = idx === currentMatchIdx ? ' is-current' : '';
+      gDiv.className = `${pending ? 'game-badge game-pending' : 'game-badge'}${selectedClass}`;
+      gDiv.dataset.matchIdx = String(idx);
       gDiv.innerHTML = `<span class="field-label">Feld ${fieldIdx + 1}</span>
         ${teamBadge(match.a, 'TBD')} vs ${teamBadge(match.b, 'TBD')}
         <span class="score-box">
@@ -1123,14 +1140,20 @@ function renderRunden() {
           const arr = groupScores[matchIdx] || [null, null];
           arr[side] = value;
           groupScores[matchIdx] = arr;
+          currentMatchIdx = matchIdx;
           const mode = document.getElementById('mode').value;
           if (mode === 'direct' || mode === 'playoff') {
             renderAll(true);
           } else {
             renderTable();
             renderProgress();
+            renderRunden();
           }
         });
+      });
+      gDiv.addEventListener('click', (e) => {
+        if (e.target.closest('input')) return;
+        setCurrentMatchIdx(idx, false);
       });
       gamesRow.appendChild(gDiv);
     });
@@ -1211,6 +1234,7 @@ function renderAll(preserveScores = true) {
   const schedule = buildSchedule(mode);
   normalizeScoresLength(schedule.length, preserveScores);
   resolvedMatches = resolveSchedule(schedule);
+  ensureCurrentMatchIdx();
   renderMatchEditor();
   renderRunden();
   renderTable();
@@ -1236,6 +1260,7 @@ let preStartTimer = null;
 let remaining = 300;
 let configuredDuration = 300;
 let timerPhase = 'idle';
+let currentMatchIdx = 0;
 let intervalPlan = { enabled: false, workSec: 45, restSec: 15, rounds: 6 };
 let intervalRuntime = { round: 1, isRest: false };
 function pad(num) { return num < 10 ? `0${num}` : String(num); }
@@ -1295,6 +1320,46 @@ function describePhase() {
   if (!intervalPlan.enabled) return 'Läuft';
   const kind = intervalRuntime.isRest ? 'Pause' : 'Spiel';
   return `R${intervalRuntime.round}/${intervalPlan.rounds} · ${kind}`;
+}
+function getAutoNextEnabled() {
+  const toggle = document.getElementById('autoNextToggle');
+  return !!(toggle && toggle.checked);
+}
+function ensureCurrentMatchIdx() {
+  if (!resolvedMatches.length) {
+    currentMatchIdx = 0;
+    return;
+  }
+  if (currentMatchIdx < 0 || currentMatchIdx >= resolvedMatches.length) {
+    const firstOpen = groupScores.findIndex((s) => !isCompleteScore(s));
+    currentMatchIdx = firstOpen >= 0 ? firstOpen : 0;
+  }
+}
+function getNextMatchIdx(fromIdx) {
+  const total = resolvedMatches.length;
+  if (!total) return null;
+  for (let step = 1; step <= total; step += 1) {
+    const idx = (fromIdx + step) % total;
+    if (!isCompleteScore(groupScores[idx])) return idx;
+  }
+  return (fromIdx + 1) % total;
+}
+function setCurrentMatchIdx(nextIdx, shouldScroll = false) {
+  if (!resolvedMatches.length) return;
+  currentMatchIdx = Math.max(0, Math.min(resolvedMatches.length - 1, nextIdx));
+  renderRunden();
+  if (shouldScroll) {
+    requestAnimationFrame(() => {
+      const active = document.querySelector(`.game-badge[data-match-idx="${currentMatchIdx}"]`);
+      if (active) active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
+}
+function advanceToNextMatch(shouldScroll = true) {
+  if (!resolvedMatches.length) return;
+  const nextIdx = getNextMatchIdx(currentMatchIdx);
+  if (nextIdx == null) return;
+  setCurrentMatchIdx(nextIdx, shouldScroll);
 }
 function playShortBeep(frequency = 1000, duration = 0.14, volume = 0.22) {
   try {
@@ -1356,6 +1421,7 @@ function finishTimer() {
   updateTimerUI();
   setTimerState('Zeit abgelaufen');
   playBuzzer().then(() => setTimeout(playHorn, 180));
+  if (getAutoNextEnabled()) advanceToNextMatch(true);
 }
 function beginPrestart(completeHandler) {
   timerPhase = 'prestart';
