@@ -23,13 +23,13 @@
       --rot: #df4848;
       --gelb: #ffd600;
       --schwarz: #222;
-      --primary: #df4848;
-      --secondary: #0033a0;
-      --bg: #f0f4fb;
+      --primary: #d73f3f;
+      --secondary: #1d4fa8;
+      --bg: #ecf2fb;
       --card: #fff;
-      --border: #e0e0e0;
+      --border: #d8e1ee;
       --radius: 18px;
-      --shadow: 0 8px 24px #0033a018;
+      --shadow: 0 10px 24px rgba(13, 47, 104, 0.1);
       --ice: #e9f2ff;
       --line: #c0d9ff;
       --font: 'Avenir', 'Segoe UI', Arial, sans-serif;
@@ -130,7 +130,7 @@
       box-shadow: 0 2px 7px #0033a012;
     }
     .runde-block {
-      background: var(--card);
+      background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
       border-radius: var(--radius);
       box-shadow: var(--shadow);
       padding: 1.0rem 2rem 1.1rem 2rem;
@@ -200,9 +200,9 @@
     .game-badge, .pairing-row {
       display: flex;
       align-items: center;
-      background: linear-gradient(180deg, #fbfdff 0%, #f3f8ff 100%);
+      background: linear-gradient(180deg, #fcfdff 0%, #f5f8ff 100%);
       border-radius: 14px;
-      border: 1px solid #d8e4f7;
+      border: 1px solid #d4e0f4;
       padding: 0.35em 1.5em;
       margin-bottom: 0.6em;
       gap: 1.2rem;
@@ -216,7 +216,7 @@
       gap: 0.32em;
       background: #fff;
       border-radius: 8px;
-      border: 1px solid #c8d5ea;
+      border: 1px solid #c6d4ec;
       font-size: 1.13em;
       padding: 5px 13px;
       margin-left: auto;
@@ -252,6 +252,7 @@
       font-family: var(--font);
       font-weight: 400;
       margin: 0 2px;
+      -webkit-user-select: none;
       user-select: none;
     }
     
@@ -396,7 +397,7 @@
       box-shadow: 0 4px 13px #0033a032;
     }
     .timer-section {
-      background: linear-gradient(90deg, #fff7ea 0%, #fff0dd 100%);
+      background: linear-gradient(90deg, #fff9ef 0%, #fff4e5 100%);
       border-radius: 13px;
       padding: 14px 32px;
       margin: 30px auto 27px auto;
@@ -408,7 +409,7 @@
       max-width: 760px;
       width: min(95vw, 760px);
       font-size: 1.21em;
-      box-shadow: 0 6px 20px #d462131f;
+      box-shadow: 0 10px 24px rgba(156, 89, 22, 0.14);
       position: sticky;
       top: 10px;
       z-index: 20;
@@ -436,7 +437,7 @@
     }
     .timer-section button {
       font-size: 1.18em;
-      background: linear-gradient(90deg, #c00 80%, #f57c00 100%);
+      background: linear-gradient(90deg, #be1f1f 0%, #f07f24 100%);
       color: #fff;
       font-weight: 500;
       border: none;
@@ -461,9 +462,9 @@
       font-family: var(--font);
     }
     .progress-chip {
-      background: #ffffffcc;
-      border: 1px solid #ffd0ac;
-      color: #7d3f11;
+      background: #fffdf9;
+      border: 1px solid #ffcfa4;
+      color: #7a3d13;
       border-radius: 999px;
       padding: 0.35em 0.85em;
       font-weight: 600;
@@ -676,7 +677,7 @@
   <h2>Turnier-Modus</h2>
   <div class="view-row">
     <span class="view-label">Ansicht</span>
-    <select id="viewMode" class="view-select">
+    <select id="viewMode" class="view-select" aria-label="Ansicht auswählen">
       <option value="auto">Auto (Gerät)</option>
       <option value="standard">Standard</option>
       <option value="broadcast">Broadcast (iPad/TV)</option>
@@ -684,7 +685,7 @@
     </select>
   </div>
   <div class="modus-row">
-    <select id="mode" class="modus-big">
+    <select id="mode" class="modus-big" aria-label="Turniermodus auswählen">
       <option value="jgj">Jeder gegen Jeden</option>
       <option value="hrr">Hin-&-Rückrunde</option>
       <option value="direct">Vorrunde + Direkter Final</option>
@@ -836,7 +837,11 @@ function buildSchedule(mode) {
   if (mode === 'jgj' || mode === 'gol') return vorrunde;
 
   if (mode === 'hrr') {
-    const rueckrundeRounds = rrRounds.map((round) => round.map((m) => ({ a: m.b, b: m.a })));
+    const rueckrundeRounds = rrRounds.map((round) =>
+      round
+        .map((m) => ({ a: m.b, b: m.a }))
+        .reverse()
+    );
     const rueckrunde = flattenRounds(rueckrundeRounds, 'Rückrunde', rrRounds.length + 1);
     return [...vorrunde, ...rueckrunde];
   }
@@ -1026,8 +1031,12 @@ function renderRunden() {
           arr[side] = value;
           groupScores[matchIdx] = arr;
           const mode = document.getElementById('mode').value;
-          if (mode === 'direct' || mode === 'playoff') renderAll(true);
-          else renderTable();
+          if (mode === 'direct' || mode === 'playoff') {
+            renderAll(true);
+          } else {
+            renderTable();
+            renderProgress();
+          }
         });
       });
       gamesRow.appendChild(gDiv);
