@@ -1148,8 +1148,14 @@ function renderRunden() {
           } else {
             renderTable();
             renderProgress();
-            renderRunden();
+            // Avoid full re-render on every keystroke to preserve iPad input focus.
+            gDiv.classList.toggle('game-pending', !isCompleteScore(groupScores[matchIdx]));
           }
+        });
+        input.addEventListener('blur', () => {
+          const mode = document.getElementById('mode').value;
+          if (mode === 'direct' || mode === 'playoff') return;
+          renderRunden();
         });
       });
       gDiv.addEventListener('click', (e) => {
@@ -1341,11 +1347,12 @@ function ensureCurrentMatchIdx() {
 function getNextMatchIdx(fromIdx) {
   const total = resolvedMatches.length;
   if (!total) return null;
+  const safeFromIdx = Number.isInteger(fromIdx) ? fromIdx : 0;
   for (let step = 1; step <= total; step += 1) {
-    const idx = (fromIdx + step) % total;
+    const idx = (safeFromIdx + step) % total;
     if (!isCompleteScore(groupScores[idx])) return idx;
   }
-  return (fromIdx + 1) % total;
+  return (safeFromIdx + 1) % total;
 }
 function setCurrentMatchIdx(nextIdx, shouldScroll = false) {
   if (!resolvedMatches.length) return;
@@ -1362,6 +1369,10 @@ function advanceToNextMatch(shouldScroll = true) {
   if (!resolvedMatches.length) return;
   const nextIdx = getNextMatchIdx(currentMatchIdx);
   if (nextIdx == null) return;
+  if (nextIdx === currentMatchIdx && resolvedMatches.length > 1) {
+    setCurrentMatchIdx((currentMatchIdx + 1) % resolvedMatches.length, shouldScroll);
+    return;
+  }
   setCurrentMatchIdx(nextIdx, shouldScroll);
 }
 function playShortBeep(frequency = 1000, duration = 0.14, volume = 0.22) {
