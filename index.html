@@ -978,14 +978,27 @@
       padding: 0.4rem 0 22rem 0;
       overflow-x: hidden;
     }
+    body.view-iphone .hero-main {
+      gap: 0;
+      padding: 0;
+    }
     body.view-iphone .logo {
       width: 100%;
       height: auto;
-      margin-bottom: 0.55rem;
+      margin-bottom: 0;
       padding: 0;
       object-fit: contain;
       object-position: center;
       background: #050b18;
+      border: 0;
+      border-radius: 20px 20px 0 0;
+      box-shadow: none;
+    }
+    body.view-iphone .hero-copy {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      padding: 1.15rem 1rem 1.25rem;
     }
     body.view-iphone h1 {
       font-size: 1.35rem;
@@ -993,7 +1006,8 @@
     }
     body.view-iphone .app-subtitle {
       font-size: 0.88rem;
-      width: min(calc(100vw - 16px), 540px);
+      width: 100%;
+      max-width: 100%;
       margin-top: -0.4rem;
     }
     body.view-iphone .dashboard-grid {
@@ -1200,6 +1214,20 @@
     }
     @media (max-width: 600px) {
       .card::after { left: 0; width: 100%; }
+      .hero-main {
+        gap: 0;
+        padding: 0;
+      }
+      .hero-copy {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        padding: 1.15rem 1rem 1.25rem;
+      }
+      .app-subtitle {
+        width: 100%;
+        max-width: 100%;
+      }
       .game-badge, .pairing-row { font-size: 0.97em; gap: 0.5rem; padding: 0.45rem 0.65rem;}
       .game-badge {
         grid-template-columns: minmax(44px, 64px) minmax(54px, 1fr) auto minmax(54px, 1fr);
@@ -1217,6 +1245,9 @@
         object-fit: contain;
         object-position: center;
         background: #050b18;
+        border: 0;
+        border-radius: 20px 20px 0 0;
+        box-shadow: none;
       }
       .score-input { width: 2.5ch; font-size: 1.05em; padding: 7px 2px; }
       .timer-section { top: 0; border-radius: 0; width: 100%; max-width: 100%; padding: 10px 10px; margin: 12px 0; }
