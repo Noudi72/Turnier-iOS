@@ -12,6 +12,7 @@
 <link rel="shortcut icon" href="favicon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Turnier EHCBB">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#d73f3f">
 <meta name="description" content="Turnierleitung, Spielplan, Timer und Live-Tabelle für EHC Biel-Bienne Turniere.">
@@ -390,6 +391,10 @@
       transform: translateY(-1px);
       border-color: #aab8cf;
       background: var(--input-bg);
+    }
+    .tool-button.danger {
+      color: var(--primary);
+      border-color: color-mix(in srgb, var(--primary) 34%, var(--border));
     }
     .current-panel {
       width: 100%;
@@ -1323,6 +1328,7 @@
         <button class="tool-button" id="importJsonBtn" type="button">Import</button>
         <button class="tool-button" id="exportCsvBtn" type="button">CSV</button>
         <button class="tool-button" id="printBtn" type="button">Drucken</button>
+        <button class="tool-button danger" id="newTournamentBtn" type="button">Neues Turnier</button>
         <input id="importFile" type="file" accept="application/json,.json" hidden>
       </div>
     </div>
@@ -1400,9 +1406,11 @@
 const TEAM_COUNT = 4;
 const STATE_STORAGE_KEY = 'turnier.appState.v2';
 const THEME_STORAGE_KEY = 'turnier.theme';
+const DEFAULT_TEAMS = ['Blau', 'Rot', 'Gelb', 'Schwarz'];
+const DEFAULT_COLORS = ['#2775e3', '#df4848', '#ffd600', '#222222'];
 
-let teams = ['Blau', 'Rot', 'Gelb', 'Schwarz'];
-let colors = ['#2775e3', '#df4848', '#ffd600', '#222222'];
+let teams = [...DEFAULT_TEAMS];
+let colors = [...DEFAULT_COLORS];
 let groupScores = [];
 let resolvedMatches = [];
 const VIEW_STORAGE_KEY = 'turnier.viewMode';
@@ -1639,6 +1647,38 @@ function exportTournamentCsv() {
   const csv = rows.map((row) => row.map(csvEscape).join(';')).join('\n');
   const date = new Date().toISOString().slice(0, 10);
   downloadFile(`turnier-spielplan-${date}.csv`, 'text/csv;charset=utf-8', csv);
+}
+
+function resetTimerControls() {
+  document.getElementById('min').value = 5;
+  document.getElementById('sec').value = 0;
+  document.getElementById('intervalToggle').checked = false;
+  document.getElementById('autoNextToggle').checked = true;
+  document.getElementById('workSec').value = 45;
+  document.getElementById('restSec').value = 15;
+  document.getElementById('roundCount').value = 6;
+}
+
+function resetScoresOnly() {
+  stopTimer(true);
+  currentMatchIdx = 0;
+  groupScores = groupScores.map(() => [null, null]);
+  renderAll(true);
+  setTimerState('Resultate zurückgesetzt');
+}
+
+function resetTournamentToDefaults() {
+  stopTimer(true);
+  teams = [...DEFAULT_TEAMS];
+  colors = [...DEFAULT_COLORS];
+  groupScores = [];
+  currentMatchIdx = 0;
+  document.getElementById('mode').value = 'jgj';
+  resetTimerControls();
+  renderTeamsEditor();
+  renderAll(false);
+  saveTournamentState();
+  setTimerState('Neues Turnier bereit');
 }
 
 function normalizeScoresLength(length, preserve = true) {
@@ -2053,8 +2093,11 @@ window.addEventListener('resize', () => {
 window.addEventListener('scroll', updateTimerDocking, { passive: true });
 document.getElementById('resetBtn').addEventListener('click', () => {
   if (!confirm('Alle Resultate zurücksetzen? Teams und Farben bleiben erhalten.')) return;
-  groupScores = groupScores.map(() => [null, null]);
-  renderAll(true);
+  resetScoresOnly();
+});
+document.getElementById('newTournamentBtn').addEventListener('click', () => {
+  if (!confirm('Neues Turnier starten? Teams, Farben, Modus, Timer und Resultate werden auf Standard zurückgesetzt.')) return;
+  resetTournamentToDefaults();
 });
 document.getElementById('exportJsonBtn').addEventListener('click', exportTournamentBackup);
 document.getElementById('exportCsvBtn').addEventListener('click', exportTournamentCsv);
@@ -2087,6 +2130,12 @@ document.getElementById('focusCurrentBtn').addEventListener('click', () => {
   setCurrentMatchIdx(currentMatchIdx, true);
 });
 document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+
+if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
 
 let timer = null;
 let preStartTimer = null;
