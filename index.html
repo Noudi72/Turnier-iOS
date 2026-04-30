@@ -124,12 +124,15 @@
       box-shadow: 0 14px 36px rgba(23, 45, 84, 0.1);
       -webkit-backdrop-filter: blur(14px);
       backdrop-filter: blur(14px);
+      overflow: hidden;
     }
     .logo {
       width: 100%;
+      max-width: 100%;
       height: clamp(140px, 16vw, 220px);
       max-height: none;
       object-fit: cover;
+      box-sizing: border-box;
       margin: 0;
       border-radius: 18px;
       box-shadow: 0 16px 38px rgba(17, 35, 68, 0.18);
@@ -972,9 +975,12 @@
     }
     body.view-iphone .logo {
       width: 100%;
-      height: clamp(120px, 34vw, 170px);
+      height: auto;
       margin-bottom: 0.55rem;
       padding: 0;
+      object-fit: contain;
+      object-position: center;
+      background: #050b18;
     }
     body.view-iphone h1 {
       font-size: 1.35rem;
@@ -1202,7 +1208,10 @@
       .field-label { padding: 4px 8px; min-width: 32px;}
       .logo {
         width: 100%;
-        height: clamp(120px, 34vw, 170px);
+        height: auto;
+        object-fit: contain;
+        object-position: center;
+        background: #050b18;
       }
       .score-input { width: 2.5ch; font-size: 1.05em; padding: 7px 2px; }
       .timer-section { top: 0; border-radius: 0; width: 100%; max-width: 100%; padding: 10px 10px; margin: 12px 0; }
