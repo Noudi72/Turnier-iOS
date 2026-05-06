@@ -1231,6 +1231,47 @@
     body.view-iphone.density-compact .timer-countdown {
       font-size: 0.94em;
     }
+    body.view-iphone.density-ultra .card,
+    body.view-iphone.density-ultra .runde-block,
+    body.view-iphone.density-ultra .tabelle-card {
+      padding: 0.56rem 0.48rem;
+      border-radius: 11px;
+    }
+    body.view-iphone.density-ultra .game-badge,
+    body.view-iphone.density-ultra .pairing-row {
+      padding: 0.3rem 0.28rem;
+      font-size: 0.76em;
+      gap: 0.2rem;
+      border-radius: 9px;
+    }
+    body.view-iphone.density-ultra .field-label {
+      min-width: 40px;
+      padding: 2px 5px;
+      font-size: 0.74em;
+    }
+    body.view-iphone.density-ultra .team-badge {
+      min-width: 30px;
+      padding: 3px 6px;
+      font-size: 0.82em;
+    }
+    body.view-iphone.density-ultra .score-input {
+      width: 1.9ch;
+      font-size: 0.88em;
+      padding: 5px 1px;
+    }
+    body.view-iphone.density-ultra .timer-section {
+      padding: 5px 5px;
+      gap: 4px;
+    }
+    body.view-iphone.density-ultra .timer-section button {
+      font-size: 0.86em;
+      min-height: 2em;
+      padding: 0.18em 0.35em;
+    }
+    body.view-iphone.density-ultra .timer-countdown {
+      font-size: 0.9em;
+      min-width: 52px;
+    }
     @media (max-width: 800px) {
       body {
         overflow-x: hidden;
@@ -1403,6 +1444,7 @@
         <select id="densityMode" class="view-select" aria-label="Layoutdichte auswählen">
           <option value="comfort">Comfort</option>
           <option value="compact">Compact</option>
+          <option value="ultra">Ultra-Compact</option>
         </select>
       </div>
       <div class="modus-row">
@@ -1572,8 +1614,9 @@ function applyViewMode(mode) {
 }
 function applyDensityMode(mode) {
   const body = document.body;
-  currentDensityMode = mode === 'compact' ? 'compact' : 'comfort';
+  currentDensityMode = ['comfort', 'compact', 'ultra'].includes(mode) ? mode : 'comfort';
   body.classList.toggle('density-compact', currentDensityMode === 'compact');
+  body.classList.toggle('density-ultra', currentDensityMode === 'ultra');
   const select = document.getElementById('densityMode');
   if (select) select.value = currentDensityMode;
 }
@@ -1588,7 +1631,7 @@ function loadViewMode() {
 }
 function loadDensityMode() {
   const saved = localStorage.getItem(DENSITY_STORAGE_KEY);
-  currentDensityMode = saved === 'compact' ? 'compact' : 'comfort';
+  currentDensityMode = ['comfort', 'compact', 'ultra'].includes(saved) ? saved : 'comfort';
   applyDensityMode(currentDensityMode);
 }
 
@@ -2228,7 +2271,7 @@ document.getElementById('viewMode').addEventListener('change', (e) => {
   queueSaveState();
 });
 document.getElementById('densityMode').addEventListener('change', (e) => {
-  currentDensityMode = e.target.value === 'compact' ? 'compact' : 'comfort';
+  currentDensityMode = ['comfort', 'compact', 'ultra'].includes(e.target.value) ? e.target.value : 'comfort';
   localStorage.setItem(DENSITY_STORAGE_KEY, currentDensityMode);
   applyDensityMode(currentDensityMode);
   queueSaveState();
