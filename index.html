@@ -890,6 +890,21 @@
       min-width: 140px;
       text-align: center;
     }
+
+    .save-chip {
+      background: #eef9f0;
+      border: 1px solid #b9e2c0;
+      color: #186332;
+      border-radius: 999px;
+      padding: 0.35em 0.85em;
+      font-weight: 600;
+      font-size: 0.82em;
+      min-width: 110px;
+      text-align: center;
+      opacity: 0;
+      transition: opacity 0.18s ease;
+    }
+    .save-chip.visible { opacity: 1; }
     .timer-state {
       background: color-mix(in srgb, var(--input-bg) 84%, transparent);
       border: 1px solid #ffcca1;
@@ -1174,6 +1189,11 @@
       font-size: 0.76em;
       padding: 0.26em 0.58em;
     }
+    body.view-iphone .save-chip {
+      min-width: 90px;
+      font-size: 0.74em;
+      padding: 0.24em 0.5em;
+    }
     body.view-iphone .timer-state {
       min-width: 96px;
       font-size: 0.75em;
@@ -1349,6 +1369,7 @@
         <select id="mode" class="modus-big" aria-label="Turniermodus auswählen">
           <option value="jgj">Jeder gegen Jeden</option>
           <option value="hrr">Hin-&-Rückrunde</option>
+          <option value="battle">Battle-Level (UH/BB/BD)</option>
           <option value="direct">Vorrunde + Direkter Final</option>
           <option value="playoff">Playoff (Vorrunde+HF+Platz 3+Finale)</option>
           <option value="gol">Grossfeld – 3 Spiele pro Team</option>
@@ -1386,6 +1407,7 @@
       </div>
       <span class="timer-state" id="timer-state">Bereit</span>
       <span class="progress-chip" id="match-progress">Erfasst: 0/0</span>
+      <span class="save-chip" id="save-chip">Gespeichert</span>
       <div class="timer-options">
         <label class="toggle">
           <input id="intervalToggle" type="checkbox">
@@ -1447,6 +1469,7 @@ let resolvedMatches = [];
 const VIEW_STORAGE_KEY = 'turnier.viewMode';
 let currentViewMode = 'auto';
 let saveStateTimer = null;
+let saveHintTimer = null;
 
 function applyTheme(theme) {
   const resolved = theme === 'dark' ? 'dark' : 'light';
@@ -1760,6 +1783,24 @@ function buildSchedule(mode) {
   const vorrunde = flattenRounds(rrRounds, 'Vorrunde', 1);
   if (mode === 'jgj' || mode === 'gol') return vorrunde;
 
+
+  if (mode === 'battle') {
+    return [
+      { id: 'battle-1', type: 'fixed', phase: 'Battle-Level', sport: 'Unihockey', round: 1, a: 0, b: 1 },
+      { id: 'battle-2', type: 'fixed', phase: 'Battle-Level', sport: 'Basketball', round: 1, a: 3, b: 2 },
+      { id: 'battle-3', type: 'fixed', phase: 'Battle-Level', sport: 'Unihockey', round: 2, a: 3, b: 0 },
+      { id: 'battle-4', type: 'fixed', phase: 'Battle-Level', sport: 'Badminton', round: 2, a: 1, b: 2 },
+      { id: 'battle-5', type: 'fixed', phase: 'Battle-Level', sport: 'Basketball', round: 3, a: 1, b: 3 },
+      { id: 'battle-6', type: 'fixed', phase: 'Battle-Level', sport: 'Badminton', round: 3, a: 0, b: 2 },
+      { id: 'battle-7', type: 'fixed', phase: 'Battle-Level', sport: 'Unihockey', round: 4, a: 2, b: 3 },
+      { id: 'battle-8', type: 'fixed', phase: 'Battle-Level', sport: 'Basketball', round: 4, a: 0, b: 1 },
+      { id: 'battle-9', type: 'fixed', phase: 'Battle-Level', sport: 'Unihockey', round: 5, a: 2, b: 1 },
+      { id: 'battle-10', type: 'fixed', phase: 'Battle-Level', sport: 'Badminton', round: 5, a: 3, b: 0 },
+      { id: 'battle-11', type: 'fixed', phase: 'Battle-Level', sport: 'Basketball', round: 6, a: 2, b: 0 },
+      { id: 'battle-12', type: 'fixed', phase: 'Battle-Level', sport: 'Badminton', round: 6, a: 1, b: 3 }
+    ];
+  }
+
   if (mode === 'hrr') {
     const rueckrundeRounds = rrRounds.map((round) =>
       round
@@ -1931,6 +1972,15 @@ function renderDashboard() {
   if (currentMetaEl) currentMetaEl.textContent = currentMeta;
 }
 
+
+function showSaveHint() {
+  const chip = document.getElementById('save-chip');
+  if (!chip) return;
+  chip.classList.add('visible');
+  if (saveHintTimer) clearTimeout(saveHintTimer);
+  saveHintTimer = setTimeout(() => chip.classList.remove('visible'), 900);
+}
+
 function renderMatchEditor() {
   const ed = document.getElementById('match-editor');
   ed.innerHTML = '';
@@ -1945,7 +1995,7 @@ function renderMatchEditor() {
     matches.forEach((m, fieldIdx) => {
       const row = document.createElement('div');
       row.className = 'pairing-row';
-      row.innerHTML = `<span class="field-label">Feld ${fieldIdx + 1}</span> ${teamBadge(m.a, 'TBD')} vs ${teamBadge(m.b, 'TBD')} <span class="phase-label">${escapeHtml(m.phase)}</span>`;
+      row.innerHTML = `<span class="field-label">Feld ${fieldIdx + 1}</span> ${teamBadge(m.a, 'TBD')} vs ${teamBadge(m.b, 'TBD')} <span class="phase-label">${escapeHtml(m.sport || m.phase)}</span>`;
       ed.appendChild(row);
     });
   });
@@ -1974,6 +2024,7 @@ function renderRunden() {
       gDiv.dataset.matchIdx = String(idx);
       gDiv.innerHTML = `<span class="field-label">Feld ${fieldIdx + 1}</span>
         ${teamBadge(match.a, 'TBD')} vs ${teamBadge(match.b, 'TBD')}
+        <span style="color:#5c6474;font-size:0.84em;font-weight:600;">${escapeHtml(match.sport || '')}</span>
         <span class="score-box">
           <input class="score-input" data-idx="${idx}" data-i="0" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" value="${score[0] ?? ''}" ${scoreDisabled}>
           <span class="sep">:</span>
@@ -1989,6 +2040,7 @@ function renderRunden() {
       const arr = groupScores[matchIdx] || [null, null];
           arr[side] = value;
           groupScores[matchIdx] = arr;
+          if (isCompleteScore(arr)) showSaveHint();
           currentMatchIdx = matchIdx;
           const mode = document.getElementById('mode').value;
           if (mode === 'direct' || mode === 'playoff') {
