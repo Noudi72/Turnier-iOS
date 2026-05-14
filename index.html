@@ -1452,6 +1452,7 @@
           <option value="jgj">Jeder gegen Jeden</option>
           <option value="hrr">Hin-&-Rückrunde</option>
           <option value="battle">Battle-Level (UH/BB/BD)</option>
+          <option value="twoTeams3OT">1 Feld · 2 Teams · 3 Drittel + OT</option>
           <option value="direct">Vorrunde + Direkter Final</option>
           <option value="playoff">Playoff (Vorrunde+HF+Platz 3+Finale)</option>
           <option value="gol">Grossfeld – 3 Spiele pro Team</option>
@@ -1539,6 +1540,7 @@
 
 <script>
 const TEAM_COUNT = 4;
+const MODE_TWO_TEAMS_3OT = 'twoTeams3OT';
 const STATE_STORAGE_KEY = 'turnier.appState.v2';
 const THEME_STORAGE_KEY = 'turnier.theme';
 const DEFAULT_TEAMS = ['Blau', 'Rot', 'Gelb', 'Schwarz'];
@@ -1898,6 +1900,16 @@ function buildSchedule(mode) {
     ];
   }
 
+  if (mode === MODE_TWO_TEAMS_3OT) {
+    const phase = '2 Teams · 1 Feld';
+    return [
+      { id: 'tt-d1', type: 'fixed', phase, sport: 'Drittel 1', field: 1, round: 1, a: 0, b: 1 },
+      { id: 'tt-d2', type: 'fixed', phase, sport: 'Drittel 2', field: 1, round: 1, a: 0, b: 1 },
+      { id: 'tt-d3', type: 'fixed', phase, sport: 'Drittel 3', field: 1, round: 1, a: 0, b: 1 },
+      { id: 'tt-ot', type: 'fixed', phase, sport: 'Overtime (bei Unentschieden)', field: 1, round: 1, a: 0, b: 1 }
+    ];
+  }
+
   if (mode === 'hrr') {
     const rueckrundeRounds = rrRounds.map((round) =>
       round
@@ -1953,6 +1965,82 @@ function isCompleteScore(score) {
   return score && Number.isInteger(score[0]) && Number.isInteger(score[1]);
 }
 
+function currentScheduleMode() {
+  return document.getElementById('mode')?.value || 'jgj';
+}
+
+function isTwoTeamsThreePeriodMode(mode = currentScheduleMode()) {
+  return mode === MODE_TWO_TEAMS_3OT;
+}
+
+function twoTeamsPeriodTotals() {
+  const s = groupScores;
+  if (!Array.isArray(s) || s.length < 4) return { periodsComplete: false, needOT: false, a: 0, b: 0 };
+  const periodsComplete = [0, 1, 2].every((i) => isCompleteScore(s[i]));
+  if (!periodsComplete) {
+    let a = 0;
+    let b = 0;
+    for (let i = 0; i < 3; i += 1) {
+      const sc = s[i];
+      if (isCompleteScore(sc)) {
+        a += sc[0];
+        b += sc[1];
+      }
+    }
+    return { periodsComplete: false, needOT: false, a, b };
+  }
+  const a = s[0][0] + s[1][0] + s[2][0];
+  const b = s[0][1] + s[1][1] + s[2][1];
+  return { periodsComplete: true, needOT: a === b, a, b };
+}
+
+function maybeClearUnneededOvertimeScores() {
+  if (!isTwoTeamsThreePeriodMode()) return;
+  const t = twoTeamsPeriodTotals();
+  if (!t.periodsComplete || t.needOT) return;
+  groupScores[3] = [null, null];
+}
+
+function isMatchRowDone(idx) {
+  if (!isTwoTeamsThreePeriodMode()) return isCompleteScore(groupScores[idx]);
+  const s = groupScores;
+  const t = twoTeamsPeriodTotals();
+  if (idx < 3) return isCompleteScore(s[idx]);
+  if (!t.periodsComplete) return false;
+  if (!t.needOT) return true;
+  return isCompleteScore(s[3]);
+}
+
+function syncTwoTeamsOvertimeRowUI() {
+  if (!isTwoTeamsThreePeriodMode()) return;
+  const t = twoTeamsPeriodTotals();
+  const enabled = t.periodsComplete && t.needOT;
+  document.querySelectorAll('input.score-input[data-idx="3"]').forEach((el) => {
+    const side = Number(el.dataset.i);
+    const v = groupScores[3]?.[side];
+    el.value = v == null ? '' : String(v);
+    el.disabled = !enabled;
+  });
+  const badge = document.querySelector('.game-badge[data-match-idx="3"]');
+  if (badge) {
+    const pending = !isMatchRowDone(3);
+    badge.classList.toggle('game-pending', pending);
+  }
+}
+
+function countMatchProgress() {
+  if (!isTwoTeamsThreePeriodMode()) {
+    const done = groupScores.filter((sc) => isCompleteScore(sc)).length;
+    return { done, total: resolvedMatches.length };
+  }
+  const t = twoTeamsPeriodTotals();
+  let done = [0, 1, 2].filter((i) => isCompleteScore(groupScores[i])).length;
+  if (!t.periodsComplete) return { done, total: 3 };
+  if (!t.needOT) return { done: 3, total: 3 };
+  const otDone = isCompleteScore(groupScores[3]) ? 1 : 0;
+  return { done: 3 + otDone, total: 4 };
+}
+
 function applyMatchToStats(stats, a, b, g1, g2) {
   stats[a].gf += g1;
   stats[a].ga += g2;
@@ -1974,6 +2062,47 @@ function sortTeamsByStats(stats) {
     (stats[b].gf - stats[a].gf) ||
     (a - b)
   );
+}
+
+function buildTwoTeamsSyntheticStats() {
+  const stats = createEmptyStats();
+  const s = groupScores;
+  let aG = 0;
+  let bG = 0;
+  for (let i = 0; i < 3; i += 1) {
+    const sc = s[i];
+    if (isCompleteScore(sc)) {
+      aG += sc[0];
+      bG += sc[1];
+    }
+  }
+  const t = twoTeamsPeriodTotals();
+  if (t.periodsComplete && t.needOT && isCompleteScore(s[3])) {
+    aG += s[3][0];
+    bG += s[3][1];
+  }
+  stats[0].gf = aG;
+  stats[0].ga = bG;
+  stats[1].gf = bG;
+  stats[1].ga = aG;
+  const finished = t.periodsComplete && (!t.needOT || isCompleteScore(s[3]));
+  if (finished) {
+    if (aG > bG) {
+      stats[0].win = 1;
+      stats[0].pts = 3;
+      stats[1].loss = 1;
+    } else if (bG > aG) {
+      stats[1].win = 1;
+      stats[1].pts = 3;
+      stats[0].loss = 1;
+    } else {
+      stats[0].draw = 1;
+      stats[1].draw = 1;
+      stats[0].pts = 1;
+      stats[1].pts = 1;
+    }
+  }
+  return stats;
 }
 
 function computeVorrundeRanking(schedule) {
@@ -2041,17 +2170,59 @@ function renderDashboard() {
   const current = resolvedMatches[currentMatchIdx];
   const nextIdx = getNextMatchIdx(currentMatchIdx);
   const next = nextIdx == null ? null : resolvedMatches[nextIdx];
-  const done = groupScores.filter((s) => isCompleteScore(s)).length;
-  const total = resolvedMatches.length;
-  const stats = createEmptyStats();
-  resolvedMatches.forEach((m, idx) => {
-    if (m.a == null || m.b == null) return;
-    const score = groupScores[idx];
-    if (!isCompleteScore(score)) return;
-    applyMatchToStats(stats, m.a, m.b, score[0], score[1]);
-  });
-  const leader = sortTeamsByStats(stats)[0];
-  const leaderText = leader == null ? '-' : `${teams[leader]} · ${stats[leader].pts} Pkte`;
+  const prog = countMatchProgress();
+  const done = prog.done;
+  const total = prog.total;
+  const stats = isTwoTeamsThreePeriodMode()
+    ? buildTwoTeamsSyntheticStats()
+    : (() => {
+      const acc = createEmptyStats();
+      resolvedMatches.forEach((m, idx) => {
+        if (m.a == null || m.b == null) return;
+        const score = groupScores[idx];
+        if (!isCompleteScore(score)) return;
+        applyMatchToStats(acc, m.a, m.b, score[0], score[1]);
+      });
+      return acc;
+    })();
+  const leader = isTwoTeamsThreePeriodMode()
+    ? (() => {
+      const t = twoTeamsPeriodTotals();
+      if (!t.periodsComplete) return null;
+      if (t.a > t.b) return 0;
+      if (t.b > t.a) return 1;
+      if (!t.needOT) return null;
+      if (!isCompleteScore(groupScores[3])) return null;
+      if (groupScores[3][0] > groupScores[3][1]) return 0;
+      if (groupScores[3][1] > groupScores[3][0]) return 1;
+      return null;
+    })()
+    : sortTeamsByStats(stats)[0];
+  const leaderText = isTwoTeamsThreePeriodMode()
+    ? (() => {
+      const t = twoTeamsPeriodTotals();
+      let aG = 0;
+      let bG = 0;
+      for (let i = 0; i < 3; i += 1) {
+        const sc = groupScores[i];
+        if (isCompleteScore(sc)) {
+          aG += sc[0];
+          bG += sc[1];
+        }
+      }
+      if (t.periodsComplete && t.needOT && isCompleteScore(groupScores[3])) {
+        aG += groupScores[3][0];
+        bG += groupScores[3][1];
+      }
+      const names = `${teams[0]} ${aG}:${bG} ${teams[1]}`;
+      if (!t.periodsComplete) return `Zwischenstand · ${names}`;
+      if (t.needOT && !isCompleteScore(groupScores[3])) return `${names} · OT nötig`;
+      if (!t.needOT && leader != null) return `${teams[leader]} gewinnt · ${names}`;
+      if (!t.needOT) return `${names} · nach 3 Dritteln`;
+      if (leader != null) return `${teams[leader]} gewinnt · ${names}`;
+      return `${names} · Unentschieden (inkl. OT)`;
+    })()
+    : (leader == null ? '-' : `${teams[leader]} · ${stats[leader].pts} Pkte`);
   const currentText = current ? matchName(current) : 'Bereit';
   const currentMeta = current ? `Runde ${current.round} · ${current.phase}` : 'Spielplan wird geladen';
 
@@ -2117,8 +2288,12 @@ function renderRunden() {
     roundMatches.forEach((match, fieldIdx) => {
       const score = groupScores[resolvedMatches.indexOf(match)] || [null, null];
       const idx = resolvedMatches.indexOf(match);
-      const pending = !isCompleteScore(score);
-      const scoreDisabled = match.a == null || match.b == null ? 'disabled' : '';
+      const pending = !isMatchRowDone(idx);
+      let scoreDisabled = match.a == null || match.b == null ? 'disabled' : '';
+      if (isTwoTeamsThreePeriodMode() && idx === 3) {
+        const t = twoTeamsPeriodTotals();
+        if (!t.periodsComplete || !t.needOT) scoreDisabled = 'disabled';
+      }
       const gDiv = document.createElement('div');
       const selectedClass = idx === currentMatchIdx ? ' is-current' : '';
       gDiv.className = `${pending ? 'game-badge game-pending' : 'game-badge'}${selectedClass}`;
@@ -2144,6 +2319,10 @@ function renderRunden() {
           if (isCompleteScore(arr)) showSaveHint();
           currentMatchIdx = matchIdx;
           const mode = document.getElementById('mode').value;
+          if (isTwoTeamsThreePeriodMode(mode)) {
+            maybeClearUnneededOvertimeScores();
+            syncTwoTeamsOvertimeRowUI();
+          }
           if (mode === 'direct' || mode === 'playoff') {
             renderAll(true);
           } else {
@@ -2152,7 +2331,7 @@ function renderRunden() {
             renderDashboard();
             saveTournamentState();
             // Avoid full re-render on every keystroke to preserve iPad input focus.
-            gDiv.classList.toggle('game-pending', !isCompleteScore(groupScores[matchIdx]));
+            gDiv.classList.toggle('game-pending', !isMatchRowDone(matchIdx));
           }
         });
         input.addEventListener('blur', () => {
@@ -2177,14 +2356,19 @@ function renderRunden() {
 }
 
 function renderTable() {
-  const stats = createEmptyStats();
-  resolvedMatches.forEach((m, idx) => {
-    if (m.a == null || m.b == null) return;
-    const score = groupScores[idx];
-    if (!isCompleteScore(score)) return;
-    applyMatchToStats(stats, m.a, m.b, score[0], score[1]);
-  });
-  const sorted = sortTeamsByStats(stats);
+  const stats = isTwoTeamsThreePeriodMode()
+    ? buildTwoTeamsSyntheticStats()
+    : (() => {
+      const acc = createEmptyStats();
+      resolvedMatches.forEach((m, idx) => {
+        if (m.a == null || m.b == null) return;
+        const score = groupScores[idx];
+        if (!isCompleteScore(score)) return;
+        applyMatchToStats(acc, m.a, m.b, score[0], score[1]);
+      });
+      return acc;
+    })();
+  const sorted = isTwoTeamsThreePeriodMode() ? [0, 1] : sortTeamsByStats(stats);
   const rows = sorted.map((teamId) => `
     <tr>
       <td class="team-badge" style="background:${colors[teamId]};color:${getContrastYIQ(colors[teamId])}">${escapeHtml(teams[teamId])}</td>
@@ -2200,17 +2384,17 @@ function renderTable() {
 }
 
 function renderProgress() {
-  const done = groupScores.filter((s) => isCompleteScore(s)).length;
-  const total = resolvedMatches.length;
+  const prog = countMatchProgress();
   const progress = document.getElementById('match-progress');
   if (!progress) return;
-  progress.textContent = `Erfasst: ${done}/${total}`;
+  progress.textContent = `Erfasst: ${prog.done}/${prog.total}`;
 }
 
 function renderTeamsEditor() {
   const teamsDiv = document.getElementById('teams');
   teamsDiv.innerHTML = '';
-  for (let i = 0; i < TEAM_COUNT; i++) {
+  const slots = isTwoTeamsThreePeriodMode() ? 2 : TEAM_COUNT;
+  for (let i = 0; i < slots; i++) {
     const color = colors[i];
     const fg = getContrastYIQ(color);
     const tDiv = document.createElement('div');
@@ -2248,6 +2432,9 @@ function renderAll(preserveScores = true) {
   const mode = document.getElementById('mode').value;
   const schedule = buildSchedule(mode);
   normalizeScoresLength(schedule.length, preserveScores);
+  if (isTwoTeamsThreePeriodMode(mode)) {
+    maybeClearUnneededOvertimeScores();
+  }
   resolvedMatches = resolveSchedule(schedule);
   ensureCurrentMatchIdx();
   renderMatchEditor();
@@ -2261,6 +2448,7 @@ function renderAll(preserveScores = true) {
 }
 
 document.getElementById('mode').addEventListener('change', () => {
+  renderTeamsEditor();
   renderAll(false);
   queueSaveState();
 });
@@ -2405,7 +2593,7 @@ function ensureCurrentMatchIdx() {
     return;
   }
   if (currentMatchIdx < 0 || currentMatchIdx >= resolvedMatches.length) {
-    const firstOpen = groupScores.findIndex((s) => !isCompleteScore(s));
+    const firstOpen = groupScores.findIndex((_, i) => !isMatchRowDone(i));
     currentMatchIdx = firstOpen >= 0 ? firstOpen : 0;
   }
 }
@@ -2415,7 +2603,7 @@ function getNextMatchIdx(fromIdx) {
   const safeFromIdx = Number.isInteger(fromIdx) ? fromIdx : 0;
   for (let step = 1; step <= total; step += 1) {
     const idx = (safeFromIdx + step) % total;
-    if (!isCompleteScore(groupScores[idx])) return idx;
+    if (!isMatchRowDone(idx)) return idx;
   }
   return (safeFromIdx + 1) % total;
 }
