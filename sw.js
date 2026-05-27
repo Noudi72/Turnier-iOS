@@ -1,4 +1,4 @@
-const CACHE_NAME = 'turnier-app-v4';
+const CACHE_NAME = 'turnier-app-v5';
 const ASSETS = [
   './',
   './index.html',
@@ -7,6 +7,7 @@ const ASSETS = [
   './icon.png',
   './appicon.png',
   './favicon.png',
+  './favicon.ico',
   './apple-touch-icon.png',
   './apple-touch-icon-180.png',
   './apple-touch-icon-256.png'
