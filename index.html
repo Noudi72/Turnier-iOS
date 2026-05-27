@@ -1835,6 +1835,10 @@
           <option value="ultra">Ultra-Compact</option>
         </select>
       </div>
+      <div class="view-row">
+        <span class="view-label">Design</span>
+        <button class="tool-button theme-toggle" id="settingsThemeToggle" type="button" aria-pressed="false">Dark Mode</button>
+      </div>
       <div class="modus-row">
         <select id="mode" class="modus-big" aria-label="Turniermodus auswählen">
           <option value="jgj">Jeder gegen Jeden</option>
@@ -1970,11 +1974,10 @@ let multiSportSeed = Date.now();
 function applyTheme(theme) {
   const resolved = theme === 'dark' ? 'dark' : 'light';
   document.documentElement.dataset.theme = resolved;
-  const toggle = document.getElementById('themeToggle');
-  if (toggle) {
+  document.querySelectorAll('#themeToggle, #settingsThemeToggle').forEach((toggle) => {
     toggle.textContent = resolved === 'dark' ? 'Light Mode' : 'Dark Mode';
     toggle.setAttribute('aria-pressed', String(resolved === 'dark'));
-  }
+  });
 }
 
 function loadTheme() {
@@ -3575,7 +3578,8 @@ document.querySelectorAll('.app-tab').forEach((button) => {
 document.addEventListener('pointerdown', () => {
   if (!audioUnlocked) ensureAudioUnlocked();
 }, { passive: true });
-document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+document.getElementById('themeToggle')?.addEventListener('click', toggleTheme);
+document.getElementById('settingsThemeToggle')?.addEventListener('click', toggleTheme);
 window.addEventListener('beforeprint', renderPrintReport);
 
 if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
@@ -3596,6 +3600,8 @@ let intervalPlan = { enabled: false, workSec: 45, restSec: 15, rounds: 6 };
 let intervalRuntime = { round: 1, isRest: false };
 let audioContext = null;
 let audioUnlocked = false;
+let transitionTimer = null;
+let announcementTimer = null;
 function pad(num) { return num < 10 ? `0${num}` : String(num); }
 function setInputsDisabled(disabled) {
   document.getElementById('min').disabled = disabled;
@@ -3656,21 +3662,7 @@ function getSingleTimerSlotDuration() {
     : getConfiguredDuration();
 }
 function getTournamentTimeSlotCount() {
-  if (!resolvedMatches.length) return 0;
-  const byRound = new Map();
-  resolvedMatches.forEach((match) => {
-    const key = String(match.round);
-    if (!byRound.has(key)) byRound.set(key, []);
-    byRound.get(key).push(match);
-  });
-  return Array.from(byRound.values()).reduce((total, matches) => {
-    const fields = {};
-    matches.forEach((match, idx) => {
-      const field = Number.isInteger(match.field) ? match.field : idx + 1;
-      fields[field] = (fields[field] || 0) + 1;
-    });
-    return total + Math.max(...Object.values(fields));
-  }, 0);
+  return getTimerSlotDescriptors().length;
 }
 function getTournamentDurationSeconds() {
   const slots = getTournamentTimeSlotCount() || 1;
@@ -3760,6 +3752,40 @@ function getNextRoundStartIdx(fromIdx) {
 function getNextTimerTargetIdx(fromIdx) {
   return isParallelRoundIdx(fromIdx) ? getNextRoundStartIdx(fromIdx) : getNextMatchIdx(fromIdx);
 }
+function getTimerSlotDescriptors() {
+  if (!resolvedMatches.length) return [];
+  const descriptors = [];
+  const rounds = [...new Set(resolvedMatches.map((match) => match.round))].sort((a, b) => a - b);
+  rounds.forEach((roundNumber) => {
+    const items = resolvedMatches
+      .map((match, idx) => ({ match, idx }))
+      .filter((item) => item.match.round === roundNumber)
+      .sort((a, b) => a.idx - b.idx);
+    const fieldPositions = new Map();
+    const slotMap = new Map();
+    items.forEach((item, fallbackIdx) => {
+      const field = Number.isInteger(item.match.field) ? item.match.field : fallbackIdx + 1;
+      const slot = fieldPositions.get(field) || 0;
+      fieldPositions.set(field, slot + 1);
+      if (!slotMap.has(slot)) slotMap.set(slot, []);
+      slotMap.get(slot).push(item.idx);
+    });
+    Array.from(slotMap.keys()).sort((a, b) => a - b).forEach((slot) => {
+      const indexes = slotMap.get(slot).slice().sort((a, b) => a - b);
+      descriptors.push({ round: roundNumber, slot, indexes, startIdx: indexes[0] });
+    });
+  });
+  return descriptors;
+}
+function getTimerSlotIndexForMatchIdx(matchIdx) {
+  return getTimerSlotDescriptors().findIndex((descriptor) => descriptor.indexes.includes(matchIdx));
+}
+function isFinalTimerSlot(matchIdx = currentMatchIdx) {
+  const descriptors = getTimerSlotDescriptors();
+  if (!descriptors.length) return false;
+  const slotIdx = getTimerSlotIndexForMatchIdx(matchIdx);
+  return slotIdx === descriptors.length - 1;
+}
 function setCurrentMatchIdx(nextIdx, shouldScroll = false) {
   if (!resolvedMatches.length) return;
   currentMatchIdx = Math.max(0, Math.min(resolvedMatches.length - 1, nextIdx));
@@ -3797,6 +3823,7 @@ async function ensureAudioUnlocked() {
     }
     if (!audioContext) audioContext = new AudioCtx();
     if (audioContext.state === 'suspended') await audioContext.resume();
+    if ('speechSynthesis' in window && window.speechSynthesis.resume) window.speechSynthesis.resume();
 
     const gain = audioContext.createGain();
     gain.gain.value = 0.0001;
@@ -3813,6 +3840,23 @@ async function ensureAudioUnlocked() {
     audioUnlocked = false;
     updateAudioStatus('Ton blockiert', false);
     return false;
+  }
+}
+function speakTimerPhrase(text) {
+  try {
+    if (!('speechSynthesis' in window) || !window.SpeechSynthesisUtterance) {
+      playTimerCue();
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-US';
+    utterance.rate = 0.92;
+    utterance.pitch = 0.95;
+    utterance.volume = 1;
+    window.speechSynthesis.speak(utterance);
+  } catch (e) {
+    playTimerCue();
   }
 }
 function playShortBeep(frequency = 1000, duration = 0.14, volume = 0.22, delay = 0) {
@@ -3855,12 +3899,44 @@ function playHorn() {
   playShortBeep(420, 0.42, 0.3);
   playShortBeep(360, 0.38, 0.26, 0.15);
 }
+function clearTransitionTimer() {
+  if (transitionTimer) clearTimeout(transitionTimer);
+  transitionTimer = null;
+}
+function clearAnnouncementTimer() {
+  if (announcementTimer) clearTimeout(announcementTimer);
+  announcementTimer = null;
+}
+function scheduleTimerTransition(callback, delayMs) {
+  clearTransitionTimer();
+  transitionTimer = setTimeout(() => {
+    transitionTimer = null;
+    callback();
+  }, delayMs);
+}
+function playStartHornThen(callback) {
+  setTimerState('Anspiel');
+  setCountdownDisplay(0);
+  playHorn();
+  scheduleTimerTransition(callback, 720);
+}
+function announceTimerEvent(phrase) {
+  playHorn();
+  clearAnnouncementTimer();
+  announcementTimer = setTimeout(() => {
+    announcementTimer = null;
+    speakTimerPhrase(phrase);
+  }, 760);
+}
 function stopTimer(resetToConfigured = true) {
   if (timer) clearInterval(timer);
   if (preStartTimer) clearInterval(preStartTimer);
+  clearTransitionTimer();
+  clearAnnouncementTimer();
   timer = null;
   preStartTimer = null;
   timerPhase = 'idle';
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   setInputsDisabled(false);
   updateTimerUI();
   setTimerState('Gestoppt');
@@ -3879,17 +3955,19 @@ function finishTimer() {
   clearRunningTimer();
   remaining = 0;
   setCountdownDisplay(0);
+  const tournamentFinished = isFinalTimerSlot(currentMatchIdx);
   timerPhase = 'idle';
   setInputsDisabled(false);
   updateTimerUI();
-  setTimerState('Zeit abgelaufen');
-  playBuzzer().then(() => setTimeout(playHorn, 180));
-  if (getAutoNextEnabled()) {
+  setTimerState(tournamentFinished ? 'Turnier beendet' : 'Zeit abgelaufen');
+  announceTimerEvent(tournamentFinished ? 'Tournament finish' : 'Game complete');
+  if (tournamentFinished || !getAutoNextEnabled()) return;
+  scheduleTimerTransition(() => {
     advanceToNextMatch(true);
     if (matchPauseDuration > 0) {
       startBetweenMatchPause();
     }
-  }
+  }, 1400);
 }
 function beginPrestart(completeHandler) {
   if (preStartTimer) clearInterval(preStartTimer);
@@ -3910,8 +3988,13 @@ function beginPrestart(completeHandler) {
     }
     clearInterval(preStartTimer);
     preStartTimer = null;
-    completeHandler();
+    playStartHornThen(completeHandler);
   }, 1000);
+}
+function beginMatchAfterPause() {
+  clearRunningTimer();
+  timer = null;
+  playStartHornThen(startMainCountdown);
 }
 function startBetweenMatchPause() {
   clearRunningTimer();
@@ -3928,9 +4011,7 @@ function startBetweenMatchPause() {
   }
   timer = setInterval(() => {
     if (remaining <= 0) {
-      clearInterval(timer);
-      timer = null;
-      beginPrestart(startMainCountdown);
+      beginMatchAfterPause();
       return;
     }
     remaining -= 1;
@@ -3946,9 +4027,7 @@ function startBetweenMatchPause() {
       setTimerState('Spielpause');
     }
     if (remaining === 0) {
-      clearInterval(timer);
-      timer = null;
-      beginPrestart(startMainCountdown);
+      beginMatchAfterPause();
     }
   }, 1000);
 }
@@ -4037,6 +4116,7 @@ async function startTimer() {
     stopTimer(true);
     return;
   }
+  clearTransitionTimer();
   await ensureAudioUnlocked();
   readIntervalPlan();
   intervalRuntime = { round: 1, isRest: false };
