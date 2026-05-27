@@ -1827,8 +1827,8 @@ function exportTournamentCsv() {
   const header = ['Runde', 'Phase', 'Feld', 'Team A', 'Tore A', 'Tore B', 'Team B', 'Status'];
   const rows = [header];
   resolvedMatches.forEach((match, idx) => {
-    const roundMatches = resolvedMatches.filter((m) => m.round === match.round && m.phase === match.phase);
-    const fieldIdx = roundMatches.indexOf(match) + 1;
+    const roundMatches = resolvedMatches.filter((m) => m.round === match.round);
+    const fieldIdx = match.field || roundMatches.indexOf(match) + 1;
     const score = groupScores[idx] || [null, null];
     rows.push([
       match.round,
@@ -1938,45 +1938,80 @@ function flattenRounds(rounds, phase, startRound = 1) {
 }
 
 function assignSportsToMatches(rounds, random) {
-  const flat = [];
-  rounds.forEach((round, roundIdx) => {
-    round.forEach((match, matchIdx) => flat.push({ ...match, roundIdx, matchIdx }));
-  });
+  const permutations = [
+    [0, 1, 2],
+    [0, 2, 1],
+    [1, 0, 2],
+    [1, 2, 0],
+    [2, 0, 1],
+    [2, 1, 0]
+  ];
 
   for (let attempt = 0; attempt < 500; attempt++) {
     const teamSportCounts = Array.from({ length: MULTISPORT_TEAM_COUNT }, () => Object.fromEntries(MULTISPORTS.map((sport) => [sport, 0])));
-    const sportTotals = Object.fromEntries(MULTISPORTS.map((sport) => [sport, 0]));
-    const assigned = Array(flat.length).fill(null);
-    const order = shuffleWithRandom(flat.map((_, idx) => idx), random);
+    const assignedRounds = Array(rounds.length).fill(null);
+    const roundOrder = shuffleWithRandom(rounds.map((_, idx) => idx), random);
 
-    function place(pos) {
-      if (pos >= order.length) return true;
-      const idx = order[pos];
-      const match = flat[idx];
-      const sports = shuffleWithRandom(MULTISPORTS, random)
-        .sort((a, b) => sportTotals[a] - sportTotals[b]);
-      for (const sport of sports) {
-        if (sportTotals[sport] >= 6) continue;
-        if (teamSportCounts[match.a][sport] >= 2 || teamSportCounts[match.b][sport] >= 2) continue;
-        assigned[idx] = sport;
-        sportTotals[sport] += 1;
-        teamSportCounts[match.a][sport] += 1;
-        teamSportCounts[match.b][sport] += 1;
-        if (place(pos + 1)) return true;
-        teamSportCounts[match.a][sport] -= 1;
-        teamSportCounts[match.b][sport] -= 1;
-        sportTotals[sport] -= 1;
-        assigned[idx] = null;
+    function placeRound(pos) {
+      if (pos >= roundOrder.length) return true;
+      const roundIdx = roundOrder[pos];
+      const round = rounds[roundIdx];
+      const options = shuffleWithRandom(permutations, random);
+      for (const permutation of options) {
+        let valid = true;
+        for (let fieldIdx = 0; fieldIdx < round.length; fieldIdx++) {
+          const match = round[fieldIdx];
+          const sport = MULTISPORTS[permutation[fieldIdx]];
+          if (teamSportCounts[match.a][sport] >= 2 || teamSportCounts[match.b][sport] >= 2) {
+            valid = false;
+            break;
+          }
+        }
+        if (!valid) continue;
+        for (let fieldIdx = 0; fieldIdx < round.length; fieldIdx++) {
+          const match = round[fieldIdx];
+          const sport = MULTISPORTS[permutation[fieldIdx]];
+          teamSportCounts[match.a][sport] += 1;
+          teamSportCounts[match.b][sport] += 1;
+        }
+        assignedRounds[roundIdx] = permutation;
+        if (placeRound(pos + 1)) return true;
+        for (let fieldIdx = 0; fieldIdx < round.length; fieldIdx++) {
+          const match = round[fieldIdx];
+          const sport = MULTISPORTS[permutation[fieldIdx]];
+          teamSportCounts[match.a][sport] -= 1;
+          teamSportCounts[match.b][sport] -= 1;
+        }
+        assignedRounds[roundIdx] = null;
       }
       return false;
     }
 
-    if (place(0)) {
-      return flat.map((match, idx) => ({ ...match, sport: assigned[idx] }));
+    if (placeRound(0)) {
+      return rounds.flatMap((round, roundIdx) =>
+        round.map((match, matchIdx) => {
+          const sport = MULTISPORTS[assignedRounds[roundIdx][matchIdx]];
+          return {
+            ...match,
+            roundIdx,
+            matchIdx,
+            sport,
+            field: MULTISPORTS.indexOf(sport) + 1
+          };
+        })
+      );
     }
   }
 
-  return flat.map((match, idx) => ({ ...match, sport: MULTISPORTS[idx % MULTISPORTS.length] }));
+  return rounds.flatMap((round, roundIdx) =>
+    round.map((match, matchIdx) => ({
+      ...match,
+      roundIdx,
+      matchIdx,
+      sport: MULTISPORTS[matchIdx],
+      field: matchIdx + 1
+    }))
+  );
 }
 
 function buildMultiSportSchedule(seed = multiSportSeed) {
@@ -1985,11 +2020,14 @@ function buildMultiSportSchedule(seed = multiSportSeed) {
   const repeatedRound = shuffleWithRandom(baseRounds, random)[0];
   const rounds = [...baseRounds, repeatedRound].map((round) => shuffleWithRandom(round, random));
   const matchesWithSports = assignSportsToMatches(rounds, random);
-  return matchesWithSports.map((match, idx) => ({
+  return matchesWithSports
+  .sort((a, b) => a.roundIdx - b.roundIdx || a.field - b.field)
+  .map((match, idx) => ({
     id: `multisport-${idx + 1}`,
     type: 'fixed',
     phase: match.sport,
     sport: match.sport,
+    field: match.field,
     round: match.roundIdx + 1,
     a: match.a,
     b: match.b
@@ -2379,7 +2417,7 @@ function renderMatchEditor() {
   ed.innerHTML = '';
   const grouped = {};
   resolvedMatches.forEach((m) => {
-    const key = `${m.round}-${m.phase}`;
+    const key = String(m.round);
     if (!grouped[key]) grouped[key] = [];
     grouped[key].push(m);
   });
