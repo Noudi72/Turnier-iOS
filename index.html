@@ -1622,6 +1622,9 @@
         <button class="tool-button" id="exportJsonBtn" type="button">Backup</button>
         <button class="tool-button" id="importJsonBtn" type="button">Import</button>
         <button class="tool-button" id="exportCsvBtn" type="button">CSV</button>
+        <button class="tool-button" id="exportPdfBtn" type="button">PDF</button>
+        <button class="tool-button" id="saveSettingsBtn" type="button">Setup speichern</button>
+        <button class="tool-button" id="loadSettingsBtn" type="button">Setup laden</button>
         <button class="tool-button" id="shuffleScheduleBtn" type="button">Neu mischen</button>
         <button class="tool-button" id="printBtn" type="button">Drucken</button>
         <button class="tool-button danger" id="newTournamentBtn" type="button">Neues Turnier</button>
@@ -1709,6 +1712,7 @@ const DEFAULT_TEAM_COUNT = 4;
 const MULTISPORT_TEAM_COUNT = 6;
 const MODE_TWO_TEAMS_3OT = 'twoTeams3OT';
 const STATE_STORAGE_KEY = 'turnier.appState.v2';
+const SETTINGS_STORAGE_KEY = 'turnier.settingsTemplate.v1';
 const THEME_STORAGE_KEY = 'turnier.theme';
 const DEFAULT_TEAMS = ['Blau', 'Rot', 'Gelb', 'Schwarz', 'Weiss', 'Grün'];
 const DEFAULT_COLORS = ['#2775e3', '#df4848', '#ffd600', '#222222', '#f5f7fb', '#20a65a'];
@@ -1879,6 +1883,19 @@ function shuffleWithRandom(items, random) {
   return arr;
 }
 
+function getTimerSettings() {
+  return {
+    min: document.getElementById('min')?.value || '5',
+    sec: document.getElementById('sec')?.value || '0',
+    intervalEnabled: document.getElementById('intervalToggle')?.checked || false,
+    autoNextEnabled: document.getElementById('autoNextToggle')?.checked ?? true,
+    workSec: document.getElementById('workSec')?.value || '45',
+    restSec: document.getElementById('restSec')?.value || '15',
+    matchPauseSec: document.getElementById('matchPauseSec')?.value || '60',
+    roundCount: document.getElementById('roundCount')?.value || '6'
+  };
+}
+
 function getSerializableState() {
   return {
     version: 2,
@@ -1890,16 +1907,22 @@ function getSerializableState() {
     scores: groupScores,
     currentMatchIdx,
     multiSportSeed,
-    timer: {
-      min: document.getElementById('min')?.value || '5',
-      sec: document.getElementById('sec')?.value || '0',
-      intervalEnabled: document.getElementById('intervalToggle')?.checked || false,
-      autoNextEnabled: document.getElementById('autoNextToggle')?.checked ?? true,
-      workSec: document.getElementById('workSec')?.value || '45',
-      restSec: document.getElementById('restSec')?.value || '15',
-      matchPauseSec: document.getElementById('matchPauseSec')?.value || '60',
-      roundCount: document.getElementById('roundCount')?.value || '6'
-    }
+    timer: getTimerSettings()
+  };
+}
+
+function getTournamentSettingsTemplate() {
+  return {
+    version: 1,
+    kind: 'turnier-settings',
+    savedAt: new Date().toISOString(),
+    mode: getSelectedMode(),
+    viewMode: currentViewMode,
+    densityMode: currentDensityMode,
+    teams: teams.slice(),
+    colors: colors.slice(),
+    multiSportSeed,
+    timer: getTimerSettings()
   };
 }
 
@@ -1912,6 +1935,81 @@ function saveTournamentState() {
 function queueSaveState() {
   if (saveStateTimer) clearTimeout(saveStateTimer);
   saveStateTimer = setTimeout(saveTournamentState, 120);
+}
+
+function applyTimerSettings(timer) {
+  if (!timer || typeof timer !== 'object') return;
+  document.getElementById('min').value = normalizeInt(timer.min, 0, 59, 5);
+  document.getElementById('sec').value = normalizeInt(timer.sec, 0, 59, 0);
+  document.getElementById('intervalToggle').checked = !!timer.intervalEnabled;
+  document.getElementById('autoNextToggle').checked = timer.autoNextEnabled !== false;
+  document.getElementById('workSec').value = normalizeInt(timer.workSec, 1, 599, 45);
+  document.getElementById('restSec').value = normalizeInt(timer.restSec, 0, 599, 15);
+  document.getElementById('matchPauseSec').value = normalizeInt(timer.matchPauseSec, 0, 1800, 60);
+  document.getElementById('roundCount').value = normalizeInt(timer.roundCount, 1, 99, 6);
+}
+
+function restoreTournamentSettings(data) {
+  if (!data || typeof data !== 'object') return false;
+  const settings = data.settings && typeof data.settings === 'object' ? data.settings : data;
+  const modeSelect = document.getElementById('mode');
+  const allowedModes = Array.from(modeSelect.options).map((o) => o.value);
+  if (allowedModes.includes(settings.mode)) modeSelect.value = settings.mode;
+  const teamCount = getTeamCountForMode(modeSelect.value);
+  if (Array.isArray(settings.teams)) {
+    teams = Array.from({ length: teamCount }, (_, i) => sanitizeTeamName(settings.teams[i], DEFAULT_TEAMS[i] || `Team ${i + 1}`));
+  }
+  if (Array.isArray(settings.colors)) {
+    colors = Array.from({ length: teamCount }, (_, i) => sanitizeHexColor(settings.colors[i], DEFAULT_COLORS[i] || '#222222'));
+  }
+  ensureTeamSlots(teamCount);
+  if (Number.isInteger(settings.multiSportSeed)) multiSportSeed = settings.multiSportSeed;
+  applyTimerSettings(settings.timer);
+  if (settings.viewMode && ['auto', 'standard', 'broadcast', 'iphone'].includes(settings.viewMode)) {
+    currentViewMode = settings.viewMode;
+    localStorage.setItem(VIEW_STORAGE_KEY, currentViewMode);
+    const viewSelect = document.getElementById('viewMode');
+    if (viewSelect) viewSelect.value = currentViewMode;
+    applyViewMode(currentViewMode);
+  }
+  if (settings.densityMode && ['comfort', 'compact', 'ultra'].includes(settings.densityMode)) {
+    currentDensityMode = settings.densityMode;
+    localStorage.setItem(DENSITY_STORAGE_KEY, currentDensityMode);
+    applyDensityMode(currentDensityMode);
+  }
+  groupScores = [];
+  currentMatchIdx = 0;
+  return true;
+}
+
+function saveTournamentSettingsTemplate() {
+  try {
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(getTournamentSettingsTemplate()));
+    setTimerState('Setup gespeichert');
+    showSaveHint();
+  } catch (e) {
+    alert('Setup konnte nicht gespeichert werden.');
+  }
+}
+
+function loadTournamentSettingsTemplate(showMissing = true) {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) {
+      if (showMissing) alert('Noch kein Setup gespeichert.');
+      return false;
+    }
+    stopTimer(true);
+    if (!restoreTournamentSettings(JSON.parse(raw))) throw new Error('Ungültiges Setup');
+    renderTeamsEditor();
+    renderAll(false);
+    saveTournamentState();
+    setTimerState('Setup geladen');
+    return true;
+  } catch (e) {
+    alert('Setup konnte nicht geladen werden.');
+    return false;
+  }
 }
 
 function restoreTournamentState(data) {
@@ -1935,16 +2033,7 @@ function restoreTournamentState(data) {
   }
   if (Number.isInteger(data.currentMatchIdx)) currentMatchIdx = data.currentMatchIdx;
   if (Number.isInteger(data.multiSportSeed)) multiSportSeed = data.multiSportSeed;
-  if (data.timer && typeof data.timer === 'object') {
-    document.getElementById('min').value = normalizeInt(data.timer.min, 0, 59, 5);
-    document.getElementById('sec').value = normalizeInt(data.timer.sec, 0, 59, 0);
-    document.getElementById('intervalToggle').checked = !!data.timer.intervalEnabled;
-    document.getElementById('autoNextToggle').checked = data.timer.autoNextEnabled !== false;
-    document.getElementById('workSec').value = normalizeInt(data.timer.workSec, 1, 599, 45);
-    document.getElementById('restSec').value = normalizeInt(data.timer.restSec, 0, 599, 15);
-    document.getElementById('matchPauseSec').value = normalizeInt(data.timer.matchPauseSec, 0, 1800, 60);
-    document.getElementById('roundCount').value = normalizeInt(data.timer.roundCount, 1, 99, 6);
-  }
+  applyTimerSettings(data.timer);
   if (data.viewMode && ['auto', 'standard', 'broadcast', 'iphone'].includes(data.viewMode)) {
     currentViewMode = data.viewMode;
     localStorage.setItem(VIEW_STORAGE_KEY, currentViewMode);
@@ -2086,6 +2175,150 @@ function exportTournamentCsv() {
   const csv = `\uFEFF${rows.map((row) => row.map(csvEscape).join(';')).join('\n')}`;
   const date = new Date().toISOString().slice(0, 10);
   downloadFile(`turnier-report-${date}.csv`, 'text/csv;charset=utf-8', csv);
+}
+
+function normalizePdfText(value) {
+  const replacements = {
+    ä: 'ae',
+    ö: 'oe',
+    ü: 'ue',
+    Ä: 'Ae',
+    Ö: 'Oe',
+    Ü: 'Ue',
+    ß: 'ss',
+    é: 'e',
+    É: 'E',
+    '·': '-',
+    '–': '-',
+    '—': '-',
+    '‑': '-'
+  };
+  return String(value ?? '')
+    .replace(/[äöüÄÖÜßéÉ·–—‑]/g, (char) => replacements[char] || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7E]/g, '');
+}
+
+function escapePdfText(value) {
+  return normalizePdfText(value).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+}
+
+function truncatePdfText(value, length) {
+  const text = normalizePdfText(value);
+  if (text.length <= length) return text.padEnd(length, ' ');
+  if (length <= 1) return text.slice(0, length);
+  return `${text.slice(0, length - 1)}.`;
+}
+
+function formatPdfRow(values, widths) {
+  return values.map((value, idx) => truncatePdfText(value, widths[idx])).join(' ');
+}
+
+function stringToAsciiBytes(value) {
+  const bytes = new Uint8Array(value.length);
+  for (let i = 0; i < value.length; i += 1) bytes[i] = value.charCodeAt(i) & 0xff;
+  return bytes;
+}
+
+function createReportPdfBytes() {
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const margin = 36;
+  const pages = [];
+  let ops = [];
+  let y = pageHeight - margin;
+
+  function pushPage() {
+    if (ops.length) pages.push(ops.join('\n'));
+    ops = [];
+    y = pageHeight - margin;
+  }
+
+  function ensureSpace(height = 16) {
+    if (y - height < margin) pushPage();
+  }
+
+  function addText(text, size = 10, x = margin, font = 'F1', leading = size + 4) {
+    ensureSpace(leading);
+    ops.push(`BT /${font} ${size} Tf ${x.toFixed(2)} ${y.toFixed(2)} Td (${escapePdfText(text)}) Tj ET`);
+    y -= leading;
+  }
+
+  function addGap(size = 8) {
+    y -= size;
+  }
+
+  const progress = countMatchProgress();
+  const leader = getRankingReportRows()[0];
+  const generatedAt = getReportGeneratedAt();
+  const totalTime = formatDurationLabel(getTournamentDurationSeconds());
+  const scheduleRows = getScheduleReportRows();
+  const rankingRows = getRankingReportRows();
+
+  addText('Turnierbericht', 10, margin, 'F1', 14);
+  addText('Turnier-App EHC Biel-Bienne', 18, margin, 'F1', 24);
+  addText(`Exportiert: ${generatedAt}`, 10);
+  addText(`Modus: ${getModeLabel()}`, 10);
+  addText(`Gesamtspielzeit: ${totalTime} inkl. Pausen`, 10);
+  addText(`Resultate: ${progress.done}/${progress.total} | Leader: ${leader ? `${leader.team} - ${leader.pts} Pkte` : '-'} | Teams: ${getActiveTeamCount()}`, 10);
+  addGap(10);
+  addText('Spielplan und Resultate', 13, margin, 'F1', 18);
+  addText(formatPdfRow(['Rd', 'F', 'Sport/Phase', 'Team A', 'Result', 'Team B', 'Status'], [3, 2, 18, 16, 7, 16, 8]), 8, margin, 'F2', 12);
+  scheduleRows.forEach((row) => {
+    addText(formatPdfRow([row.round, row.field, row.phase, row.teamA, row.result, row.teamB, row.status], [3, 2, 18, 16, 7, 16, 8]), 8, margin, 'F2', 11);
+  });
+  addGap(12);
+  addText('Rangliste', 13, margin, 'F1', 18);
+  addText(formatPdfRow(['Rg', 'Team', 'Sp', 'S', 'U', 'N', 'Tore', 'TD', 'Pkt'], [3, 18, 3, 2, 2, 2, 7, 4, 4]), 8, margin, 'F2', 12);
+  rankingRows.forEach((row) => {
+    addText(formatPdfRow([row.rank, row.team, row.played, row.win, row.draw, row.loss, `${row.gf}:${row.ga}`, row.gd, row.pts], [3, 18, 3, 2, 2, 2, 7, 4, 4]), 8, margin, 'F2', 11);
+  });
+  addGap(8);
+  addText('Die Rangliste basiert auf den aktuell erfassten Resultaten.', 8);
+  pushPage();
+
+  const objects = [
+    { id: 1, body: '<< /Type /Catalog /Pages 2 0 R >>' },
+    { id: 3, body: '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>' },
+    { id: 4, body: '<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>' }
+  ];
+  const pageIds = [];
+  pages.forEach((content, idx) => {
+    const contentId = 5 + (idx * 2);
+    const pageId = contentId + 1;
+    pageIds.push(pageId);
+    objects.push({ id: contentId, body: `<< /Length ${content.length} >>\nstream\n${content}\nendstream` });
+    objects.push({
+      id: pageId,
+      body: `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentId} 0 R >>`
+    });
+  });
+  objects.splice(1, 0, {
+    id: 2,
+    body: `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`
+  });
+  objects.sort((a, b) => a.id - b.id);
+
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+  objects.forEach((obj) => {
+    offsets[obj.id] = pdf.length;
+    pdf += `${obj.id} 0 obj\n${obj.body}\nendobj\n`;
+  });
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (let id = 1; id <= objects.length; id += 1) {
+    pdf += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return stringToAsciiBytes(pdf);
+}
+
+function exportTournamentPdf() {
+  const date = new Date().toISOString().slice(0, 10);
+  downloadFile(`turnier-report-${date}.pdf`, 'application/pdf', createReportPdfBytes());
+  setTimerState('PDF exportiert');
 }
 
 function resetTimerControls() {
@@ -2983,6 +3216,7 @@ function renderAll(preserveScores = true) {
   renderProgress();
   renderDashboard();
   updateTimerUI();
+  updateTotalTimeDisplay();
   updateTimerDocking();
   queueSaveState();
 }
@@ -3016,11 +3250,21 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   resetScoresOnly();
 });
 document.getElementById('newTournamentBtn').addEventListener('click', () => {
-  if (!confirm('Neues Turnier starten? Teams, Farben, Modus, Timer und Resultate werden auf Standard zurückgesetzt.')) return;
+  if (!confirm('Neues Turnier starten? Resultate werden zurückgesetzt; gespeichertes Setup wird geladen, falls vorhanden.')) return;
+  if (loadTournamentSettingsTemplate(false)) {
+    setTimerState('Neues Turnier aus Setup bereit');
+    return;
+  }
   resetTournamentToDefaults();
 });
 document.getElementById('exportJsonBtn').addEventListener('click', exportTournamentBackup);
 document.getElementById('exportCsvBtn').addEventListener('click', exportTournamentCsv);
+document.getElementById('exportPdfBtn').addEventListener('click', exportTournamentPdf);
+document.getElementById('saveSettingsBtn').addEventListener('click', saveTournamentSettingsTemplate);
+document.getElementById('loadSettingsBtn').addEventListener('click', () => {
+  if (!confirm('Gespeichertes Setup laden? Aktuelle Resultate werden zurückgesetzt.')) return;
+  loadTournamentSettingsTemplate(true);
+});
 document.getElementById('shuffleScheduleBtn').addEventListener('click', reshuffleMultiSportSchedule);
 document.getElementById('printBtn').addEventListener('click', () => {
   renderPrintReport();
@@ -3119,16 +3363,50 @@ function setCountdownDisplay(secs) {
   document.getElementById('countdown').textContent = `${pad(m)}:${pad(s)}`;
 }
 function formatDurationLabel(secs) {
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
+  const safeSecs = Math.max(0, Math.floor(Number(secs) || 0));
+  const h = Math.floor(safeSecs / 3600);
+  const m = Math.floor((safeSecs % 3600) / 60);
+  const s = safeSecs % 60;
+  if (h > 0) return `${h}:${pad(m)}:${pad(s)}`;
   return `${pad(m)}:${pad(s)}`;
 }
-function updateTotalTimeDisplay() {
-  const total = intervalPlan.enabled
+function getSingleTimerSlotDuration() {
+  return intervalPlan.enabled
     ? (intervalPlan.workSec * intervalPlan.rounds) + (intervalPlan.restSec * Math.max(0, intervalPlan.rounds - 1))
     : getConfiguredDuration();
+}
+function getTournamentTimeSlotCount() {
+  if (!resolvedMatches.length) return 0;
+  const byRound = new Map();
+  resolvedMatches.forEach((match) => {
+    const key = String(match.round);
+    if (!byRound.has(key)) byRound.set(key, []);
+    byRound.get(key).push(match);
+  });
+  return Array.from(byRound.values()).reduce((total, matches) => {
+    const fields = {};
+    matches.forEach((match, idx) => {
+      const field = Number.isInteger(match.field) ? match.field : idx + 1;
+      fields[field] = (fields[field] || 0) + 1;
+    });
+    return total + Math.max(...Object.values(fields));
+  }, 0);
+}
+function getTournamentDurationSeconds() {
+  const slots = getTournamentTimeSlotCount() || 1;
+  return (slots * getSingleTimerSlotDuration()) + (Math.max(0, slots - 1) * matchPauseDuration);
+}
+function getTournamentDurationMeta() {
+  const slots = getTournamentTimeSlotCount() || 1;
+  const pauseCount = Math.max(0, slots - 1);
+  return `${slots} Zeitfenster, ${pauseCount} Pausen`;
+}
+function updateTotalTimeDisplay() {
   const el = document.getElementById('timer-total');
-  if (el) el.textContent = `Gesamtspielzeit: ${formatDurationLabel(total)}`;
+  if (el) {
+    el.textContent = `Gesamtspielzeit: ${formatDurationLabel(getTournamentDurationSeconds())}`;
+    el.title = getTournamentDurationMeta();
+  }
 }
 function normalizeInt(value, min, max, fallback) {
   const num = Number(value);
