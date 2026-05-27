@@ -1491,6 +1491,7 @@
         <button id="nextMatchBtn" class="secondary">Nächstes Spiel</button>
       </div>
       <span class="timer-state" id="timer-state">Bereit</span>
+      <span class="progress-chip" id="timer-total">Gesamtspielzeit: 05:00</span>
       <span class="progress-chip" id="match-progress">Erfasst: 0/0</span>
       <span class="save-chip" id="save-chip">Gespeichert</span>
       <div class="timer-options">
@@ -1507,6 +1508,9 @@
         </label>
         <label class="mini">Pause
           <input id="restSec" type="number" min="0" max="599" value="15">s
+        </label>
+        <label class="mini">Spielpause
+          <input id="matchPauseSec" type="number" min="0" max="1800" value="60">s
         </label>
         <label class="mini">Runden
           <input id="roundCount" type="number" min="1" max="99" value="6">
@@ -1733,6 +1737,7 @@ function getSerializableState() {
       autoNextEnabled: document.getElementById('autoNextToggle')?.checked ?? true,
       workSec: document.getElementById('workSec')?.value || '45',
       restSec: document.getElementById('restSec')?.value || '15',
+      matchPauseSec: document.getElementById('matchPauseSec')?.value || '60',
       roundCount: document.getElementById('roundCount')?.value || '6'
     }
   };
@@ -1777,6 +1782,7 @@ function restoreTournamentState(data) {
     document.getElementById('autoNextToggle').checked = data.timer.autoNextEnabled !== false;
     document.getElementById('workSec').value = normalizeInt(data.timer.workSec, 1, 599, 45);
     document.getElementById('restSec').value = normalizeInt(data.timer.restSec, 0, 599, 15);
+    document.getElementById('matchPauseSec').value = normalizeInt(data.timer.matchPauseSec, 0, 1800, 60);
     document.getElementById('roundCount').value = normalizeInt(data.timer.roundCount, 1, 99, 6);
   }
   if (data.viewMode && ['auto', 'standard', 'broadcast', 'iphone'].includes(data.viewMode)) {
@@ -1853,6 +1859,7 @@ function resetTimerControls() {
   document.getElementById('autoNextToggle').checked = true;
   document.getElementById('workSec').value = 45;
   document.getElementById('restSec').value = 15;
+  document.getElementById('matchPauseSec').value = 60;
   document.getElementById('roundCount').value = 6;
 }
 
@@ -2687,6 +2694,8 @@ let remaining = 300;
 let configuredDuration = 300;
 let timerPhase = 'idle';
 let currentMatchIdx = 0;
+let matchPauseDuration = 60;
+let oneMinuteCuePlayed = false;
 let intervalPlan = { enabled: false, workSec: 45, restSec: 15, rounds: 6 };
 let intervalRuntime = { round: 1, isRest: false };
 function pad(num) { return num < 10 ? `0${num}` : String(num); }
@@ -2696,6 +2705,7 @@ function setInputsDisabled(disabled) {
   document.getElementById('intervalToggle').disabled = disabled;
   document.getElementById('workSec').disabled = disabled;
   document.getElementById('restSec').disabled = disabled;
+  document.getElementById('matchPauseSec').disabled = disabled;
   document.getElementById('roundCount').disabled = disabled;
 }
 function setTimerState(text) {
@@ -2707,8 +2717,7 @@ function updateTimerUI() {
   const startBtn = document.getElementById('startBtn');
   const pauseBtn = document.getElementById('pauseBtn');
   const nextMatchBtn = document.getElementById('nextMatchBtn');
-  const active = timerPhase === 'prestart' || timerPhase === 'running' || timerPhase === 'paused';
-  const running = timerPhase === 'prestart' || timerPhase === 'running';
+  const active = timerPhase === 'prestart' || timerPhase === 'running' || timerPhase === 'paused' || timerPhase === 'matchPause';
   if (section) section.classList.toggle('is-running', active);
   if (startBtn) startBtn.textContent = active ? 'Stop' : 'Start';
   if (pauseBtn) {
@@ -2729,6 +2738,18 @@ function setCountdownDisplay(secs) {
   const s = secs % 60;
   document.getElementById('countdown').textContent = `${pad(m)}:${pad(s)}`;
 }
+function formatDurationLabel(secs) {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${pad(m)}:${pad(s)}`;
+}
+function updateTotalTimeDisplay() {
+  const total = intervalPlan.enabled
+    ? (intervalPlan.workSec * intervalPlan.rounds) + (intervalPlan.restSec * Math.max(0, intervalPlan.rounds - 1))
+    : getConfiguredDuration();
+  const el = document.getElementById('timer-total');
+  if (el) el.textContent = `Gesamtspielzeit: ${formatDurationLabel(total)}`;
+}
 function normalizeInt(value, min, max, fallback) {
   const num = Number(value);
   if (!Number.isFinite(num)) return fallback;
@@ -2738,13 +2759,17 @@ function readIntervalPlan() {
   const enabled = document.getElementById('intervalToggle').checked;
   const workSec = normalizeInt(document.getElementById('workSec').value, 1, 599, 45);
   const restSec = normalizeInt(document.getElementById('restSec').value, 0, 599, 15);
+  matchPauseDuration = normalizeInt(document.getElementById('matchPauseSec').value, 0, 1800, 60);
   const rounds = normalizeInt(document.getElementById('roundCount').value, 1, 99, 6);
   document.getElementById('workSec').value = workSec;
   document.getElementById('restSec').value = restSec;
+  document.getElementById('matchPauseSec').value = matchPauseDuration;
   document.getElementById('roundCount').value = rounds;
   intervalPlan = { enabled, workSec, restSec, rounds };
+  updateTotalTimeDisplay();
 }
 function describePhase() {
+  if (timerPhase === 'matchPause') return 'Spielpause';
   if (!intervalPlan.enabled) return 'Läuft';
   const kind = intervalRuntime.isRest ? 'Pause' : 'Spiel';
   return `R${intervalRuntime.round}/${intervalPlan.rounds} · ${kind}`;
@@ -2797,7 +2822,8 @@ function advanceToNextMatch(shouldScroll = true) {
 }
 function playShortBeep(frequency = 1000, duration = 0.14, volume = 0.22) {
   try {
-    if (window.AudioContext) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -2813,6 +2839,26 @@ function playShortBeep(frequency = 1000, duration = 0.14, volume = 0.22) {
     }
   } catch (e) {}
 }
+function speakTimerCue(text) {
+  try {
+    if (!('speechSynthesis' in window)) {
+      playShortBeep(720, 0.22, 0.28);
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-US';
+    utterance.rate = 0.95;
+    utterance.volume = 1;
+    window.speechSynthesis.speak(utterance);
+  } catch (e) {
+    playShortBeep(720, 0.22, 0.28);
+  }
+}
+function playPrestartCountdownCue(secs) {
+  if (secs <= 0) return;
+  playShortBeep(secs === 1 ? 1320 : 1040, 0.14, 0.26);
+}
 function playBuzzer() {
   playShortBeep(980, 0.18, 0.26);
   setTimeout(() => playShortBeep(880, 0.18, 0.24), 190);
@@ -2825,6 +2871,7 @@ function playHorn() {
 function stopTimer(resetToConfigured = true) {
   if (timer) clearInterval(timer);
   if (preStartTimer) clearInterval(preStartTimer);
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   timer = null;
   preStartTimer = null;
   timerPhase = 'idle';
@@ -2848,26 +2895,71 @@ function finishTimer() {
   updateTimerUI();
   setTimerState('Zeit abgelaufen');
   playBuzzer().then(() => setTimeout(playHorn, 180));
-  if (getAutoNextEnabled()) advanceToNextMatch(true);
+  if (getAutoNextEnabled()) {
+    advanceToNextMatch(true);
+    if (matchPauseDuration > 0) {
+      startBetweenMatchPause();
+    }
+  }
 }
 function beginPrestart(completeHandler) {
   timerPhase = 'prestart';
   updateTimerUI();
-  let preStartRemaining = 3;
+  let preStartRemaining = 5;
   setTimerState(`Start in ${preStartRemaining}`);
   setCountdownDisplay(preStartRemaining);
-  playShortBeep(980, 0.13, 0.22);
+  playPrestartCountdownCue(preStartRemaining);
   preStartTimer = setInterval(() => {
     preStartRemaining -= 1;
     if (preStartRemaining > 0) {
       setTimerState(`Start in ${preStartRemaining}`);
       setCountdownDisplay(preStartRemaining);
-      playShortBeep(980, 0.13, 0.22);
+      playPrestartCountdownCue(preStartRemaining);
       return;
     }
     clearInterval(preStartTimer);
     preStartTimer = null;
     completeHandler();
+  }, 1000);
+}
+function startBetweenMatchPause() {
+  if (timer) clearInterval(timer);
+  timer = null;
+  timerPhase = 'matchPause';
+  oneMinuteCuePlayed = false;
+  setInputsDisabled(true);
+  remaining = matchPauseDuration;
+  setCountdownDisplay(remaining);
+  setTimerState('Spielpause');
+  updateTimerUI();
+  if (remaining <= 60) {
+    speakTimerCue('One minute to go');
+    oneMinuteCuePlayed = true;
+  }
+  timer = setInterval(() => {
+    if (remaining <= 0) {
+      clearInterval(timer);
+      timer = null;
+      beginPrestart(startMainCountdown);
+      return;
+    }
+    remaining -= 1;
+    setCountdownDisplay(remaining);
+    if (!oneMinuteCuePlayed && remaining === 60) {
+      speakTimerCue('One minute to go');
+      oneMinuteCuePlayed = true;
+    }
+    if (remaining > 0 && remaining <= 5) {
+      setTimerState(`Anspiel in ${remaining}`);
+      playPrestartCountdownCue(remaining);
+    } else {
+      setTimerState('Spielpause');
+    }
+    if (remaining === 0) {
+      clearInterval(timer);
+      timer = null;
+      beginPrestart(startMainCountdown);
+    }
   }, 1000);
 }
 function handlePeriodFinished() {
@@ -2976,15 +3068,17 @@ document.getElementById('min').addEventListener('input', () => {
   if (timerPhase !== 'idle') return;
   configuredDuration = getConfiguredDuration();
   setCountdownDisplay(configuredDuration);
+  updateTotalTimeDisplay();
   queueSaveState();
 });
 document.getElementById('sec').addEventListener('input', () => {
   if (timerPhase !== 'idle') return;
   configuredDuration = getConfiguredDuration();
   setCountdownDisplay(configuredDuration);
+  updateTotalTimeDisplay();
   queueSaveState();
 });
-['intervalToggle', 'autoNextToggle', 'workSec', 'restSec', 'roundCount'].forEach((id) => {
+['intervalToggle', 'autoNextToggle', 'workSec', 'restSec', 'matchPauseSec', 'roundCount'].forEach((id) => {
   document.getElementById(id).addEventListener('input', () => {
     if (timerPhase !== 'idle') return;
     readIntervalPlan();
