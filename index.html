@@ -1501,7 +1501,7 @@
         </label>
         <label class="toggle auto-next">
           <input id="autoNextToggle" type="checkbox" checked>
-          Auto nächstes Spiel
+          <span id="autoNextLabel">Auto nächstes Spiel</span>
         </label>
         <label class="mini">Spiel
           <input id="workSec" type="number" min="1" max="599" value="45">s
@@ -2332,10 +2332,42 @@ function teamBadge(teamId, fallbackText = '?') {
   return `<span class="team-badge" style="background:${color};color:${getContrastYIQ(color)}">${escapeHtml(name)}</span>`;
 }
 
+function roundIndexesForMatchIdx(matchIdx) {
+  const match = resolvedMatches[matchIdx];
+  if (!match) return [];
+  return resolvedMatches
+    .map((m, idx) => ({ match: m, idx }))
+    .filter((item) => item.match.round === match.round)
+    .sort((a, b) => {
+      const fieldA = Number.isInteger(a.match.field) ? a.match.field : resolvedMatches.filter((m) => m.round === a.match.round).indexOf(a.match) + 1;
+      const fieldB = Number.isInteger(b.match.field) ? b.match.field : resolvedMatches.filter((m) => m.round === b.match.round).indexOf(b.match) + 1;
+      return fieldA - fieldB || a.idx - b.idx;
+    })
+    .map((item) => item.idx);
+}
+
+function isParallelRoundIdx(matchIdx) {
+  const indexes = roundIndexesForMatchIdx(matchIdx);
+  if (indexes.length <= 1) return false;
+  const fields = new Set(indexes.map((idx, fallbackIdx) => {
+    const match = resolvedMatches[idx];
+    return Number.isInteger(match?.field) ? match.field : fallbackIdx + 1;
+  }));
+  return fields.size > 1;
+}
+
+function isCurrentTimerMatch(match, idx) {
+  if (idx === currentMatchIdx) return true;
+  const current = resolvedMatches[currentMatchIdx];
+  return !!(current && match.round === current.round && isParallelRoundIdx(currentMatchIdx));
+}
+
 function renderDashboard() {
   const current = resolvedMatches[currentMatchIdx];
-  const nextIdx = getNextMatchIdx(currentMatchIdx);
+  const nextIdx = getNextTimerTargetIdx(currentMatchIdx);
   const next = nextIdx == null ? null : resolvedMatches[nextIdx];
+  const currentIsParallel = isParallelRoundIdx(currentMatchIdx);
+  const currentRoundSize = roundIndexesForMatchIdx(currentMatchIdx).length;
   const prog = countMatchProgress();
   const done = prog.done;
   const total = prog.total;
@@ -2389,8 +2421,11 @@ function renderDashboard() {
       return `${names} · Unentschieden (inkl. OT)`;
     })()
     : (leader == null ? '-' : `${teams[leader]} · ${stats[leader].pts} Pkte`);
-  const currentText = current ? matchName(current) : 'Bereit';
-  const currentMeta = current ? `Runde ${current.round} · ${current.phase}` : 'Spielplan wird geladen';
+  const currentText = current ? (currentIsParallel ? `Runde ${current.round}` : matchName(current)) : 'Bereit';
+  const currentMeta = current
+    ? (currentIsParallel ? `${currentRoundSize} Spiele gleichzeitig` : `Runde ${current.round} · ${current.phase}`)
+    : 'Spielplan wird geladen';
+  const nextText = next ? (currentIsParallel ? `Runde ${next.round}` : matchName(next)) : '-';
 
   const dashCurrent = document.getElementById('dash-current');
   const dashLeader = document.getElementById('dash-leader');
@@ -2401,7 +2436,7 @@ function renderDashboard() {
   if (dashCurrent) dashCurrent.textContent = currentText;
   if (dashLeader) dashLeader.textContent = leaderText;
   if (dashProgress) dashProgress.textContent = `${done}/${total} Spiele`;
-  if (dashNext) dashNext.textContent = next ? matchName(next) : '-';
+  if (dashNext) dashNext.textContent = nextText;
   if (currentTitle) currentTitle.textContent = currentText;
   if (currentMetaEl) currentMetaEl.textContent = currentMeta;
 }
@@ -2463,7 +2498,7 @@ function renderRunden() {
         if (!t.periodsComplete || !t.needOT) scoreDisabled = 'disabled';
       }
       const gDiv = document.createElement('div');
-      const selectedClass = idx === currentMatchIdx ? ' is-current' : '';
+      const selectedClass = isCurrentTimerMatch(match, idx) ? ' is-current' : '';
       gDiv.className = `${pending ? 'game-badge game-pending' : 'game-badge'}${selectedClass}`;
       gDiv.dataset.matchIdx = String(idx);
       gDiv.innerHTML = `<span class="field-label">${fieldLabel(match, fieldIdx)}</span>
@@ -2521,6 +2556,7 @@ function renderRunden() {
     rundeList.appendChild(block);
   });
   renderDashboard();
+  updateTimerUI();
 }
 
 function renderTable() {
@@ -2717,14 +2753,20 @@ function updateTimerUI() {
   const startBtn = document.getElementById('startBtn');
   const pauseBtn = document.getElementById('pauseBtn');
   const nextMatchBtn = document.getElementById('nextMatchBtn');
+  const autoNextLabel = document.getElementById('autoNextLabel');
   const active = timerPhase === 'prestart' || timerPhase === 'running' || timerPhase === 'paused' || timerPhase === 'matchPause';
+  const nextLabel = isParallelRoundIdx(currentMatchIdx) ? 'Nächste Runde' : 'Nächstes Spiel';
   if (section) section.classList.toggle('is-running', active);
   if (startBtn) startBtn.textContent = active ? 'Stop' : 'Start';
   if (pauseBtn) {
     pauseBtn.disabled = !(timerPhase === 'running' || timerPhase === 'paused');
     pauseBtn.textContent = timerPhase === 'paused' ? 'Weiter' : 'Pause';
   }
-  if (nextMatchBtn) nextMatchBtn.disabled = !resolvedMatches.length;
+  if (nextMatchBtn) {
+    nextMatchBtn.disabled = !resolvedMatches.length;
+    nextMatchBtn.textContent = nextLabel;
+  }
+  if (autoNextLabel) autoNextLabel.textContent = isParallelRoundIdx(currentMatchIdx) ? 'Auto nächste Runde' : 'Auto nächstes Spiel';
 }
 function getConfiguredDuration() {
   const min = Math.max(0, Math.min(59, Number(document.getElementById('min').value) || 0));
@@ -2798,6 +2840,30 @@ function getNextMatchIdx(fromIdx) {
   }
   return (safeFromIdx + 1) % total;
 }
+function getNextRoundStartIdx(fromIdx) {
+  const current = resolvedMatches[fromIdx];
+  if (!current) return getNextMatchIdx(fromIdx);
+  const rounds = [...new Set(resolvedMatches.map((match) => match.round))].sort((a, b) => a - b);
+  const currentRoundPos = rounds.indexOf(current.round);
+  if (currentRoundPos < 0) return getNextMatchIdx(fromIdx);
+  for (let step = 1; step <= rounds.length; step += 1) {
+    const roundNumber = rounds[(currentRoundPos + step) % rounds.length];
+    const indexes = resolvedMatches
+      .map((match, idx) => ({ match, idx }))
+      .filter((item) => item.match.round === roundNumber)
+      .sort((a, b) => {
+        const fieldA = Number.isInteger(a.match.field) ? a.match.field : a.idx;
+        const fieldB = Number.isInteger(b.match.field) ? b.match.field : b.idx;
+        return fieldA - fieldB || a.idx - b.idx;
+      })
+      .map((item) => item.idx);
+    if (indexes.length) return indexes[0];
+  }
+  return getNextMatchIdx(fromIdx);
+}
+function getNextTimerTargetIdx(fromIdx) {
+  return isParallelRoundIdx(fromIdx) ? getNextRoundStartIdx(fromIdx) : getNextMatchIdx(fromIdx);
+}
 function setCurrentMatchIdx(nextIdx, shouldScroll = false) {
   if (!resolvedMatches.length) return;
   currentMatchIdx = Math.max(0, Math.min(resolvedMatches.length - 1, nextIdx));
@@ -2812,7 +2878,7 @@ function setCurrentMatchIdx(nextIdx, shouldScroll = false) {
 }
 function advanceToNextMatch(shouldScroll = true) {
   if (!resolvedMatches.length) return;
-  const nextIdx = getNextMatchIdx(currentMatchIdx);
+  const nextIdx = getNextTimerTargetIdx(currentMatchIdx);
   if (nextIdx == null) return;
   if (nextIdx === currentMatchIdx && resolvedMatches.length > 1) {
     setCurrentMatchIdx((currentMatchIdx + 1) % resolvedMatches.length, shouldScroll);
