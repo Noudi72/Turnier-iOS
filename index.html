@@ -1595,7 +1595,7 @@
     }
     @media print {
       @page {
-        size: A4 portrait;
+        size: A4 landscape;
         margin: 11mm;
       }
       html,
@@ -1855,7 +1855,7 @@
         <button class="tool-button" id="exportJsonBtn" type="button">Backup</button>
         <button class="tool-button" id="importJsonBtn" type="button">Import</button>
         <button class="tool-button" id="exportCsvBtn" type="button">CSV</button>
-        <button class="tool-button" id="exportPdfBtn" type="button">PDF</button>
+        <button class="tool-button" id="exportPdfBtn" type="button">Resultate PDF</button>
         <button class="tool-button" id="saveSettingsBtn" type="button">Setup speichern</button>
         <button class="tool-button" id="loadSettingsBtn" type="button">Setup laden</button>
         <button class="tool-button" id="shuffleScheduleBtn" type="button">Neu mischen</button>
@@ -1919,7 +1919,7 @@
     <div class="card schedule-card tab-panel tab-schedule" data-tab-panel="schedule">
       <h2>Spielplan</h2>
       <div class="action-row" aria-label="Spielplan exportieren">
-        <button class="tool-button" id="schedulePdfBtn" type="button">PDF</button>
+        <button class="tool-button" id="schedulePdfBtn" type="button">Spielplan PDF</button>
         <button class="tool-button" id="schedulePrintBtn" type="button">Drucken</button>
         <button class="tool-button" id="scheduleCsvBtn" type="button">CSV</button>
       </div>
@@ -1928,6 +1928,9 @@
     <div id="runde-list" class="tab-panel tab-results" data-tab-panel="results"></div>
     <div class="tabelle-card tab-panel tab-ranking" data-tab-panel="ranking">
       <div class="tab-headline">Gesamt-Tabelle</div>
+      <div class="action-row" aria-label="Resultate und Rangliste exportieren">
+        <button class="tool-button" id="resultsPdfBtn" type="button">Resultate PDF</button>
+      </div>
       <table class="tabelle" id="tabelle">
         <thead>
           <tr>
@@ -2481,13 +2484,72 @@ function stringToAsciiBytes(value) {
   return bytes;
 }
 
-function createReportPdfBytes() {
-  const pageWidth = 595.28;
-  const pageHeight = 841.89;
-  const margin = 36;
+function parsePdfColor(hex, fallback = '#111827') {
+  const source = /^#[0-9a-fA-F]{6}$/.test(hex || '') ? hex : fallback;
+  return [
+    parseInt(source.slice(1, 3), 16) / 255,
+    parseInt(source.slice(3, 5), 16) / 255,
+    parseInt(source.slice(5, 7), 16) / 255
+  ];
+}
+
+function pdfColor(hex, fallback) {
+  return parsePdfColor(hex, fallback).map((value) => value.toFixed(3)).join(' ');
+}
+
+function createPdfBytes({ title, kicker, meta, sections, note }) {
+  const pageWidth = 841.89;
+  const pageHeight = 595.28;
+  const margin = 28;
+  const usableWidth = pageWidth - (margin * 2);
   const pages = [];
   let ops = [];
   let y = pageHeight - margin;
+  let pageNumber = 0;
+
+  function rect(x, bottom, width, height, fill = '#ffffff', stroke = null, strokeWidth = 0.6) {
+    const fillColor = pdfColor(fill);
+    if (stroke) {
+      ops.push(`q ${fillColor} rg ${pdfColor(stroke)} RG ${strokeWidth.toFixed(2)} w ${x.toFixed(2)} ${bottom.toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re B Q`);
+    } else {
+      ops.push(`q ${fillColor} rg ${x.toFixed(2)} ${bottom.toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re f Q`);
+    }
+  }
+
+  function textAt(text, x, baseline, size = 9, font = 'F1', color = '#111827') {
+    ops.push(`BT /${font} ${size} Tf ${pdfColor(color)} rg ${x.toFixed(2)} ${baseline.toFixed(2)} Td (${escapePdfText(text)}) Tj ET`);
+  }
+
+  function textWidthEstimate(text, size) {
+    return normalizePdfText(text).length * size * 0.47;
+  }
+
+  function addText(text, size = 9, x = margin, font = 'F1', leading = size + 4, color = '#111827') {
+    ensureSpace(leading);
+    textAt(text, x, y, size, font, color);
+    y -= leading;
+  }
+
+  function addHeader() {
+    pageNumber += 1;
+    rect(margin, pageHeight - margin - 46, usableWidth, 46, '#13213b');
+    rect(margin, pageHeight - margin - 46, 9, 46, '#dc2734');
+    textAt(kicker, margin + 20, pageHeight - margin - 16, 8, 'F1', '#bfdbfe');
+    textAt(title, margin + 20, pageHeight - margin - 34, 19, 'F1', '#ffffff');
+    textAt(`Seite ${pageNumber}`, pageWidth - margin - 48, pageHeight - margin - 19, 8, 'F1', '#cbd5e1');
+    y = pageHeight - margin - 62;
+    if (meta?.length) {
+      const gap = 8;
+      const boxWidth = (usableWidth - (gap * (meta.length - 1))) / meta.length;
+      meta.forEach((item, idx) => {
+        const x = margin + (idx * (boxWidth + gap));
+        rect(x, y - 31, boxWidth, 31, '#f8fbff', '#d8e2f0');
+        textAt(item.label, x + 8, y - 12, 6.8, 'F1', '#64748b');
+        textAt(item.value, x + 8, y - 24, 9.5, 'F1', '#111827');
+      });
+      y -= 45;
+    }
+  }
 
   function pushPage() {
     if (ops.length) pages.push(ops.join('\n'));
@@ -2495,47 +2557,75 @@ function createReportPdfBytes() {
     y = pageHeight - margin;
   }
 
-  function ensureSpace(height = 16) {
-    if (y - height < margin) pushPage();
+  function startPage() {
+    addHeader();
   }
 
-  function addText(text, size = 10, x = margin, font = 'F1', leading = size + 4) {
-    ensureSpace(leading);
-    ops.push(`BT /${font} ${size} Tf ${x.toFixed(2)} ${y.toFixed(2)} Td (${escapePdfText(text)}) Tj ET`);
-    y -= leading;
+  function ensureSpace(height = 16) {
+    if (y - height >= margin) return;
+    pushPage();
+    startPage();
   }
 
   function addGap(size = 8) {
     y -= size;
   }
 
-  const progress = countMatchProgress();
-  const leader = getRankingReportRows()[0];
-  const generatedAt = getReportGeneratedAt();
-  const totalTime = formatDurationLabel(getTournamentDurationSeconds());
-  const scheduleRows = getScheduleReportRows();
-  const rankingRows = getRankingReportRows();
+  function addSectionTitle(text) {
+    ensureSpace(30);
+    rect(margin, y - 23, 5, 22, '#dc2734');
+    textAt(text, margin + 13, y - 15, 13, 'F1', '#154fb1');
+    y -= 31;
+  }
 
-  addText('Turnierbericht', 10, margin, 'F1', 14);
-  addText('Turnier-App EHC Biel-Bienne', 18, margin, 'F1', 24);
-  addText(`Exportiert: ${generatedAt}`, 10);
-  addText(`Modus: ${getModeLabel()}`, 10);
-  addText(`Gesamtspielzeit: ${totalTime} inkl. Pausen`, 10);
-  addText(`Resultate: ${progress.done}/${progress.total} | Leader: ${leader ? `${leader.team} - ${leader.pts} Pkte` : '-'} | Teams: ${getActiveTeamCount()}`, 10);
-  addGap(10);
-  addText('Spielplan und Resultate', 13, margin, 'F1', 18);
-  addText(formatPdfRow(['Rd', 'F', 'Sport/Phase', 'Team A', 'Result', 'Team B', 'Status'], [3, 2, 18, 16, 7, 16, 8]), 8, margin, 'F2', 12);
-  scheduleRows.forEach((row) => {
-    addText(formatPdfRow([row.round, row.field, row.phase, row.teamA, row.result, row.teamB, row.status], [3, 2, 18, 16, 7, 16, 8]), 8, margin, 'F2', 11);
+  function addTable(columns, rows, options = {}) {
+    const rowHeight = options.rowHeight || 21;
+    const headerHeight = options.headerHeight || 22;
+    const tableWidth = columns.reduce((total, col) => total + col.width, 0);
+    const fontSize = options.fontSize || 8.2;
+    const pad = 7;
+
+    function drawHeader() {
+      ensureSpace(headerHeight + rowHeight);
+      rect(margin, y - headerHeight, tableWidth, headerHeight, '#13213b');
+      let x = margin;
+      columns.forEach((col) => {
+        textAt(col.label, x + pad, y - 14, 7.8, 'F1', '#ffffff');
+        x += col.width;
+      });
+      y -= headerHeight;
+    }
+
+    drawHeader();
+    rows.forEach((row, rowIdx) => {
+      ensureSpace(rowHeight);
+      if (y + headerHeight > pageHeight - margin - 110) drawHeader();
+      rect(margin, y - rowHeight, tableWidth, rowHeight, rowIdx % 2 === 0 ? '#ffffff' : '#f8fafc', '#d8e2f0', 0.35);
+      let x = margin;
+      columns.forEach((col) => {
+        const raw = typeof col.value === 'function' ? col.value(row) : row[col.key];
+        const maxChars = Math.max(4, Math.floor((col.width - (pad * 2)) / (fontSize * 0.48)));
+        const value = truncatePdfText(raw, maxChars).trimEnd();
+        let textX = x + pad;
+        if (col.align === 'right') textX = x + col.width - pad - textWidthEstimate(value, fontSize);
+        if (col.align === 'center') textX = x + ((col.width - textWidthEstimate(value, fontSize)) / 2);
+        textAt(value, textX, y - 14, fontSize, col.mono ? 'F2' : 'F1', '#111827');
+        x += col.width;
+      });
+      y -= rowHeight;
+    });
+  }
+
+  startPage();
+  sections.forEach((section, idx) => {
+    if (idx > 0) addGap(10);
+    addSectionTitle(section.title);
+    addTable(section.columns, section.rows, section.options);
   });
-  addGap(12);
-  addText('Rangliste', 13, margin, 'F1', 18);
-  addText(formatPdfRow(['Rg', 'Team', 'Sp', 'S', 'U', 'N', 'Tore', 'TD', 'Pkt'], [3, 18, 3, 2, 2, 2, 7, 4, 4]), 8, margin, 'F2', 12);
-  rankingRows.forEach((row) => {
-    addText(formatPdfRow([row.rank, row.team, row.played, row.win, row.draw, row.loss, `${row.gf}:${row.ga}`, row.gd, row.pts], [3, 18, 3, 2, 2, 2, 7, 4, 4]), 8, margin, 'F2', 11);
-  });
-  addGap(8);
-  addText('Die Rangliste basiert auf den aktuell erfassten Resultaten.', 8);
+  if (note) {
+    addGap(8);
+    addText(note, 8, margin, 'F1', 11, '#64748b');
+  }
   pushPage();
 
   const objects = [
@@ -2575,10 +2665,104 @@ function createReportPdfBytes() {
   return stringToAsciiBytes(pdf);
 }
 
-function exportTournamentPdf() {
+function createSchedulePdfBytes() {
+  const progress = countMatchProgress();
+  const rows = getScheduleReportRows().map((row) => ({
+    round: row.round,
+    field: row.field,
+    phase: row.phase,
+    teamA: row.teamA,
+    teamB: row.teamB
+  }));
+  return createPdfBytes({
+    title: 'Spielplan',
+    kicker: 'Turnier-App EHC Biel-Bienne',
+    meta: [
+      { label: 'Modus', value: getModeLabel() },
+      { label: 'Teams', value: String(getActiveTeamCount()) },
+      { label: 'Paarungen', value: String(rows.length) },
+      { label: 'Exportiert', value: getReportGeneratedAt() }
+    ],
+    sections: [{
+      title: 'Paarungen und Felder',
+      rows,
+      columns: [
+        { label: 'Runde', key: 'round', width: 54, align: 'center' },
+        { label: 'Feld', key: 'field', width: 54, align: 'center' },
+        { label: 'Sport / Phase', key: 'phase', width: 160 },
+        { label: 'Team A', key: 'teamA', width: 250 },
+        { label: 'Team B', key: 'teamB', width: 250 }
+      ],
+      options: { rowHeight: rows.length > 22 ? 18 : 21, fontSize: rows.length > 22 ? 7.6 : 8.4 }
+    }],
+    note: `Nur Paarungen und Felder. Spielstaende sind nicht enthalten. Erfasst aktuell: ${progress.done}/${progress.total}.`
+  });
+}
+
+function createResultsRankingPdfBytes() {
+  const progress = countMatchProgress();
+  const rankingRows = getRankingReportRows();
+  const leader = rankingRows[0];
+  const resultRows = getScheduleReportRows();
+  return createPdfBytes({
+    title: 'Resultate und Rangliste',
+    kicker: 'Turnier-App EHC Biel-Bienne',
+    meta: [
+      { label: 'Modus', value: getModeLabel() },
+      { label: 'Resultate', value: `${progress.done}/${progress.total}` },
+      { label: 'Leader', value: leader ? `${leader.team} - ${leader.pts} Pkte` : '-' },
+      { label: 'Exportiert', value: getReportGeneratedAt() }
+    ],
+    sections: [
+      {
+        title: 'Resultate',
+        rows: resultRows,
+        columns: [
+          { label: 'R', key: 'round', width: 38, align: 'center' },
+          { label: 'F', key: 'field', width: 38, align: 'center' },
+          { label: 'Sport / Phase', key: 'phase', width: 125 },
+          { label: 'Team A', key: 'teamA', width: 205 },
+          { label: 'Resultat', key: 'result', width: 70, align: 'center', mono: true },
+          { label: 'Team B', key: 'teamB', width: 205 },
+          { label: 'Status', key: 'status', width: 78 }
+        ],
+        options: { rowHeight: resultRows.length > 18 ? 17 : 20, fontSize: resultRows.length > 18 ? 7.1 : 8 }
+      },
+      {
+        title: 'Rangliste',
+        rows: rankingRows,
+        columns: [
+          { label: 'Rang', key: 'rank', width: 48, align: 'center' },
+          { label: 'Team', key: 'team', width: 230 },
+          { label: 'Spiele', key: 'played', width: 58, align: 'center' },
+          { label: 'S', key: 'win', width: 40, align: 'center' },
+          { label: 'U', key: 'draw', width: 40, align: 'center' },
+          { label: 'N', key: 'loss', width: 40, align: 'center' },
+          { label: 'Tore', width: 82, value: (row) => `${row.gf}:${row.ga}`, align: 'center', mono: true },
+          { label: 'TD', key: 'gd', width: 58, align: 'center' },
+          { label: 'Punkte', key: 'pts', width: 66, align: 'center' }
+        ],
+        options: { rowHeight: 22, fontSize: 8.4 }
+      }
+    ],
+    note: 'Sortierung bei Punktgleichheit: Direktbegegnungen, danach Tordifferenz, erzielte Tore.'
+  });
+}
+
+function exportSchedulePdf() {
   const date = new Date().toISOString().slice(0, 10);
-  downloadFile(`turnier-report-${date}.pdf`, 'application/pdf', createReportPdfBytes());
-  setTimerState('PDF exportiert');
+  downloadFile(`turnier-spielplan-${date}.pdf`, 'application/pdf', createSchedulePdfBytes());
+  setTimerState('Spielplan PDF exportiert');
+}
+
+function exportResultsPdf() {
+  const date = new Date().toISOString().slice(0, 10);
+  downloadFile(`turnier-resultate-rangliste-${date}.pdf`, 'application/pdf', createResultsRankingPdfBytes());
+  setTimerState('Resultate PDF exportiert');
+}
+
+function exportTournamentPdf() {
+  exportResultsPdf();
 }
 
 function resetTimerControls() {
@@ -2950,13 +3134,62 @@ function applyMatchToStats(stats, a, b, g1, g2) {
   }
 }
 
-function sortTeamsByStats(stats) {
-  return Array.from({ length: getActiveTeamCount() }, (_, teamId) => teamId).sort((a, b) =>
-    stats[b].pts - stats[a].pts ||
-    ((stats[b].gf - stats[b].ga) - (stats[a].gf - stats[a].ga)) ||
+function compareByOverallStats(stats, a, b) {
+  return ((stats[b].gf - stats[b].ga) - (stats[a].gf - stats[a].ga)) ||
     (stats[b].gf - stats[a].gf) ||
-    (a - b)
-  );
+    (a - b);
+}
+
+function getHeadToHeadStats(teamIds, options = {}) {
+  const idSet = new Set(teamIds);
+  const matches = options.matches || resolvedMatches;
+  const scores = options.scores || groupScores;
+  const matchFilter = typeof options.matchFilter === 'function' ? options.matchFilter : () => true;
+  const stats = {};
+  teamIds.forEach((teamId) => {
+    stats[teamId] = { pts: 0, gf: 0, ga: 0, win: 0, draw: 0, loss: 0, played: 0 };
+  });
+  matches.forEach((match, idx) => {
+    if (!matchFilter(match, idx) || match.a == null || match.b == null) return;
+    if (!idSet.has(match.a) || !idSet.has(match.b)) return;
+    const score = scores[idx];
+    if (!isCompleteScore(score)) return;
+    applyMatchToStats(stats, match.a, match.b, score[0], score[1]);
+    stats[match.a].played += 1;
+    stats[match.b].played += 1;
+  });
+  return stats;
+}
+
+function sortTieGroupByHeadToHead(teamIds, overallStats, options = {}) {
+  if (teamIds.length <= 1) return teamIds;
+  const headStats = getHeadToHeadStats(teamIds, options);
+  const hasHeadToHead = teamIds.some((teamId) => headStats[teamId].played > 0);
+  return teamIds.slice().sort((a, b) => {
+    if (hasHeadToHead) {
+      const direct = (headStats[b].pts - headStats[a].pts) ||
+        ((headStats[b].gf - headStats[b].ga) - (headStats[a].gf - headStats[a].ga)) ||
+        (headStats[b].gf - headStats[a].gf);
+      if (direct) return direct;
+    }
+    return compareByOverallStats(overallStats, a, b);
+  });
+}
+
+function sortTeamsByStats(stats, options = {}) {
+  const teamIds = Array.from({ length: getActiveTeamCount() }, (_, teamId) => teamId)
+    .sort((a, b) => stats[b].pts - stats[a].pts || compareByOverallStats(stats, a, b));
+  const sorted = [];
+  for (let i = 0; i < teamIds.length;) {
+    const pts = stats[teamIds[i]].pts;
+    const group = [];
+    while (i < teamIds.length && stats[teamIds[i]].pts === pts) {
+      group.push(teamIds[i]);
+      i += 1;
+    }
+    sorted.push(...sortTieGroupByHeadToHead(group, stats, options));
+  }
+  return sorted;
 }
 
 function buildTwoTeamsSyntheticStats() {
@@ -3008,7 +3241,10 @@ function computeVorrundeRanking(schedule) {
     if (!isCompleteScore(score)) return;
     applyMatchToStats(stats, match.a, match.b, score[0], score[1]);
   });
-  return sortTeamsByStats(stats);
+  return sortTeamsByStats(stats, {
+    matches: schedule,
+    matchFilter: (match) => match.phase === 'Vorrunde'
+  });
 }
 
 function determineOutcome(match, idx, rankingPos) {
@@ -3521,9 +3757,10 @@ document.getElementById('newTournamentBtn').addEventListener('click', () => {
 });
 document.getElementById('exportJsonBtn').addEventListener('click', exportTournamentBackup);
 document.getElementById('exportCsvBtn').addEventListener('click', exportTournamentCsv);
-document.getElementById('exportPdfBtn').addEventListener('click', exportTournamentPdf);
+document.getElementById('exportPdfBtn').addEventListener('click', exportResultsPdf);
 document.getElementById('scheduleCsvBtn').addEventListener('click', exportTournamentCsv);
-document.getElementById('schedulePdfBtn').addEventListener('click', exportTournamentPdf);
+document.getElementById('schedulePdfBtn').addEventListener('click', exportSchedulePdf);
+document.getElementById('resultsPdfBtn').addEventListener('click', exportResultsPdf);
 document.getElementById('schedulePrintBtn').addEventListener('click', () => {
   renderPrintReport();
   window.print();
