@@ -1377,6 +1377,165 @@
       #nextMatchBtn { flex-basis: 112px; }
       .timer-countdown { margin-left: 0; }
     }
+    .print-report {
+      display: none;
+    }
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 11mm;
+      }
+      html,
+      body {
+        background: #ffffff !important;
+        color: #111827 !important;
+        padding: 0 !important;
+        min-height: auto !important;
+        font-family: var(--font);
+      }
+      body::before,
+      .app-hero,
+      .app-shell {
+        display: none !important;
+      }
+      .print-report {
+        display: block !important;
+        color: #111827;
+        font-size: 9pt;
+        line-height: 1.28;
+      }
+      .print-header {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 5mm;
+        padding-bottom: 5mm;
+        border-bottom: 2px solid #163b79;
+        break-inside: avoid;
+      }
+      .print-banner {
+        width: 100%;
+        height: 30mm;
+        object-fit: cover;
+        border-radius: 5mm;
+        border: 1px solid #cbd5e1;
+      }
+      .print-title-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8mm;
+      }
+      .print-kicker {
+        color: #1d5bbf;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 8pt;
+        margin: 0 0 1mm;
+      }
+      .print-report h1 {
+        margin: 0;
+        font-size: 20pt;
+        line-height: 1.05;
+        color: #d92737;
+      }
+      .print-generated {
+        margin: 0;
+        color: #64748b;
+        text-align: right;
+        white-space: nowrap;
+      }
+      .print-meta-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 3mm;
+      }
+      .print-meta {
+        border: 1px solid #d8e2f0;
+        border-radius: 3mm;
+        padding: 2.5mm 3mm;
+        background: #f8fbff;
+      }
+      .print-meta span {
+        display: block;
+        color: #64748b;
+        font-size: 7.5pt;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .print-meta strong {
+        display: block;
+        margin-top: 1mm;
+        font-size: 11pt;
+      }
+      .print-section {
+        margin-top: 6mm;
+        break-inside: avoid-page;
+      }
+      .print-section h2 {
+        margin: 0 0 2.6mm;
+        color: #1d5bbf;
+        font-size: 13pt;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .print-table {
+        width: 100%;
+        border-collapse: collapse;
+        border: 1px solid #cbd5e1;
+        overflow: hidden;
+        font-size: 8.3pt;
+      }
+      .print-table th {
+        background: #13213b;
+        color: #ffffff;
+        text-align: left;
+        padding: 2mm 2.2mm;
+        font-weight: 900;
+      }
+      .print-table td {
+        border-top: 1px solid #d8e2f0;
+        padding: 1.75mm 2.2mm;
+        vertical-align: middle;
+      }
+      .print-table tr:nth-child(even) td {
+        background: #f8fafc;
+      }
+      .print-num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .print-center {
+        text-align: center;
+      }
+      .print-result {
+        text-align: center;
+        font-weight: 900;
+        font-size: 9pt;
+      }
+      .print-team-pill {
+        display: inline-block;
+        min-width: 20mm;
+        border-radius: 999px;
+        padding: 1mm 2.2mm;
+        text-align: center;
+        font-weight: 800;
+        border: 1px solid #cbd5e1;
+      }
+      .print-status-open {
+        color: #64748b;
+      }
+      .print-status-done {
+        color: #14532d;
+        font-weight: 900;
+      }
+      .print-note {
+        margin: 2mm 0 0;
+        color: #64748b;
+        font-size: 8pt;
+      }
+    }
   </style>
 </head>
 <body>
@@ -1543,6 +1702,7 @@
     <button id="resetBtn" class="reset-button">Turnier zurücksetzen</button>
   </section>
 </main>
+<section id="print-report" class="print-report" aria-hidden="true"></section>
 
 <script>
 const DEFAULT_TEAM_COUNT = 4;
@@ -1829,27 +1989,103 @@ function csvEscape(value) {
   return `"${String(value ?? '').replace(/"/g, '""')}"`;
 }
 
-function exportTournamentCsv() {
-  const header = ['Runde', 'Phase', 'Feld', 'Team A', 'Tore A', 'Tore B', 'Team B', 'Status'];
-  const rows = [header];
-  resolvedMatches.forEach((match, idx) => {
-    const roundMatches = resolvedMatches.filter((m) => m.round === match.round);
-    const fieldIdx = match.field || roundMatches.indexOf(match) + 1;
-    const score = groupScores[idx] || [null, null];
-    rows.push([
-      match.round,
-      match.phase,
-      fieldIdx,
-      match.a == null ? 'TBD' : teams[match.a],
-      score[0] ?? '',
-      score[1] ?? '',
-      match.b == null ? 'TBD' : teams[match.b],
-      isCompleteScore(score) ? 'Erfasst' : 'Offen'
-    ]);
+function getModeLabel() {
+  const select = document.getElementById('mode');
+  const option = select?.selectedOptions?.[0];
+  return option ? option.textContent.trim() : getSelectedMode();
+}
+
+function getReportGeneratedAt() {
+  return new Date().toLocaleString('de-CH', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
   });
-  const csv = rows.map((row) => row.map(csvEscape).join(';')).join('\n');
+}
+
+function getFieldNumber(match, idx) {
+  const roundMatches = resolvedMatches.filter((m) => m.round === match.round);
+  return match.field || roundMatches.indexOf(match) + 1 || idx + 1;
+}
+
+function getReportStats() {
+  if (isTwoTeamsThreePeriodMode()) return buildTwoTeamsSyntheticStats();
+  const stats = createEmptyStats();
+  resolvedMatches.forEach((match, idx) => {
+    if (match.a == null || match.b == null) return;
+    const score = groupScores[idx];
+    if (!isCompleteScore(score)) return;
+    applyMatchToStats(stats, match.a, match.b, score[0], score[1]);
+  });
+  return stats;
+}
+
+function getRankingReportRows() {
+  const stats = getReportStats();
+  const sorted = isTwoTeamsThreePeriodMode() ? [0, 1] : sortTeamsByStats(stats);
+  return sorted.map((teamId, rank) => {
+    const stat = stats[teamId] || { win: 0, draw: 0, loss: 0, pts: 0, gf: 0, ga: 0 };
+    return {
+      rank: rank + 1,
+      teamId,
+      team: teams[teamId] || `Team ${teamId + 1}`,
+      played: stat.win + stat.draw + stat.loss,
+      win: stat.win,
+      draw: stat.draw,
+      loss: stat.loss,
+      gf: stat.gf,
+      ga: stat.ga,
+      gd: stat.gf - stat.ga,
+      pts: stat.pts
+    };
+  });
+}
+
+function getScheduleReportRows() {
+  return resolvedMatches.map((match, idx) => {
+    const score = groupScores[idx] || [null, null];
+    const complete = isCompleteScore(score);
+    return {
+      round: match.round,
+      field: getFieldNumber(match, idx),
+      phase: match.sport || match.phase,
+      teamA: match.a == null ? 'TBD' : teams[match.a],
+      teamB: match.b == null ? 'TBD' : teams[match.b],
+      teamAId: match.a,
+      teamBId: match.b,
+      scoreA: complete ? score[0] : '',
+      scoreB: complete ? score[1] : '',
+      result: complete ? `${score[0]} : ${score[1]}` : '-',
+      status: isMatchRowDone(idx) ? 'Erfasst' : 'Offen'
+    };
+  });
+}
+
+function exportTournamentCsv() {
+  const rows = [
+    ['Turnier-App EHC Biel-Bienne'],
+    ['Exportiert', getReportGeneratedAt()],
+    ['Modus', getModeLabel()],
+    [],
+    ['Spielplan und Resultate'],
+    ['Runde', 'Feld', 'Sport/Phase', 'Team A', 'Tore A', 'Tore B', 'Team B', 'Status']
+  ];
+  getScheduleReportRows().forEach((row) => {
+    rows.push([row.round, row.field, row.phase, row.teamA, row.scoreA, row.scoreB, row.teamB, row.status]);
+  });
+  rows.push(
+    [],
+    ['Rangliste'],
+    ['Rang', 'Team', 'Spiele', 'S', 'U', 'N', 'Tore', 'Gegentore', 'Tordifferenz', 'Punkte']
+  );
+  getRankingReportRows().forEach((row) => {
+    rows.push([row.rank, row.team, row.played, row.win, row.draw, row.loss, row.gf, row.ga, row.gd, row.pts]);
+  });
+  const csv = `\uFEFF${rows.map((row) => row.map(csvEscape).join(';')).join('\n')}`;
   const date = new Date().toISOString().slice(0, 10);
-  downloadFile(`turnier-spielplan-${date}.csv`, 'text/csv;charset=utf-8', csv);
+  downloadFile(`turnier-report-${date}.csv`, 'text/csv;charset=utf-8', csv);
 }
 
 function resetTimerControls() {
@@ -2594,6 +2830,104 @@ function renderProgress() {
   progress.textContent = `Erfasst: ${prog.done}/${prog.total}`;
 }
 
+function printTeamPill(teamId, label) {
+  if (teamId == null) {
+    return `<span class="print-team-pill" style="background:#eef2f7;color:#475569;">${escapeHtml(label)}</span>`;
+  }
+  const color = colors[teamId] || '#eef2f7';
+  const fg = getContrastYIQ(color);
+  return `<span class="print-team-pill" style="background:${color};color:${fg};">${escapeHtml(label)}</span>`;
+}
+
+function renderPrintReport() {
+  const report = document.getElementById('print-report');
+  if (!report) return;
+  const scheduleRows = getScheduleReportRows();
+  const rankingRows = getRankingReportRows();
+  const progress = countMatchProgress();
+  const leader = rankingRows[0];
+  const scheduleHtml = scheduleRows.map((row) => `
+    <tr>
+      <td class="print-num">${row.round}</td>
+      <td class="print-center">${row.field}</td>
+      <td>${escapeHtml(row.phase)}</td>
+      <td>${printTeamPill(row.teamAId, row.teamA)}</td>
+      <td class="print-result">${escapeHtml(row.result)}</td>
+      <td>${printTeamPill(row.teamBId, row.teamB)}</td>
+      <td class="${row.status === 'Erfasst' ? 'print-status-done' : 'print-status-open'}">${escapeHtml(row.status)}</td>
+    </tr>
+  `).join('');
+  const rankingHtml = rankingRows.map((row) => `
+    <tr>
+      <td class="print-num">${row.rank}</td>
+      <td>${printTeamPill(row.teamId, row.team)}</td>
+      <td class="print-num">${row.played}</td>
+      <td class="print-num">${row.win}</td>
+      <td class="print-num">${row.draw}</td>
+      <td class="print-num">${row.loss}</td>
+      <td class="print-num">${row.gf}:${row.ga}</td>
+      <td class="print-num">${row.gd}</td>
+      <td class="print-num"><strong>${row.pts}</strong></td>
+    </tr>
+  `).join('');
+
+  report.innerHTML = `
+    <div class="print-header">
+      <img class="print-banner" src="ehcb-logo.jpeg" alt="EHC Biel-Bienne">
+      <div class="print-title-row">
+        <div>
+          <p class="print-kicker">Turnierbericht</p>
+          <h1>Turnier-App EHC Biel-Bienne</h1>
+        </div>
+        <p class="print-generated">Exportiert<br><strong>${escapeHtml(getReportGeneratedAt())}</strong></p>
+      </div>
+      <div class="print-meta-grid">
+        <div class="print-meta"><span>Modus</span><strong>${escapeHtml(getModeLabel())}</strong></div>
+        <div class="print-meta"><span>Resultate</span><strong>${progress.done}/${progress.total}</strong></div>
+        <div class="print-meta"><span>Leader</span><strong>${leader ? escapeHtml(`${leader.team} · ${leader.pts} Pkte`) : '-'}</strong></div>
+        <div class="print-meta"><span>Teams</span><strong>${getActiveTeamCount()}</strong></div>
+      </div>
+    </div>
+    <section class="print-section">
+      <h2>Spielplan & Resultate</h2>
+      <table class="print-table">
+        <thead>
+          <tr>
+            <th>Runde</th>
+            <th>Feld</th>
+            <th>Sport/Phase</th>
+            <th>Team A</th>
+            <th>Resultat</th>
+            <th>Team B</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>${scheduleHtml}</tbody>
+      </table>
+    </section>
+    <section class="print-section">
+      <h2>Rangliste</h2>
+      <table class="print-table">
+        <thead>
+          <tr>
+            <th>Rang</th>
+            <th>Team</th>
+            <th>Spiele</th>
+            <th>S</th>
+            <th>U</th>
+            <th>N</th>
+            <th>Tore</th>
+            <th>TD</th>
+            <th>Pkte</th>
+          </tr>
+        </thead>
+        <tbody>${rankingHtml}</tbody>
+      </table>
+      <p class="print-note">Die Rangliste basiert auf den aktuell erfassten Resultaten.</p>
+    </section>
+  `;
+}
+
 function renderTeamsEditor() {
   const teamsDiv = document.getElementById('teams');
   teamsDiv.innerHTML = '';
@@ -2688,7 +3022,10 @@ document.getElementById('newTournamentBtn').addEventListener('click', () => {
 document.getElementById('exportJsonBtn').addEventListener('click', exportTournamentBackup);
 document.getElementById('exportCsvBtn').addEventListener('click', exportTournamentCsv);
 document.getElementById('shuffleScheduleBtn').addEventListener('click', reshuffleMultiSportSchedule);
-document.getElementById('printBtn').addEventListener('click', () => window.print());
+document.getElementById('printBtn').addEventListener('click', () => {
+  renderPrintReport();
+  window.print();
+});
 document.getElementById('importJsonBtn').addEventListener('click', () => {
   document.getElementById('importFile').click();
 });
@@ -2717,6 +3054,7 @@ document.getElementById('focusCurrentBtn').addEventListener('click', () => {
   setCurrentMatchIdx(currentMatchIdx, true);
 });
 document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+window.addEventListener('beforeprint', renderPrintReport);
 
 if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
   window.addEventListener('load', () => {
